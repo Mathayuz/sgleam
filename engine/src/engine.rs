@@ -38,6 +38,8 @@ pub const SGLEAM_FFI: &str = "./sgleam/sgleam_ffi.mjs";
 #[derive(Debug, Clone, PartialEq)]
 pub enum MainFunction {
     Main,
+    /// A main returning fn() -> Int (Task(Int)).
+    TaskMain,
     /// The repl's entry point, and the new files it wrote.
     ReplMain {
         name: String,
@@ -51,7 +53,7 @@ pub enum MainFunction {
 impl MainFunction {
     pub fn name(&self) -> &str {
         match self {
-            MainFunction::Main => "main",
+            MainFunction::Main | MainFunction::TaskMain => "main",
             MainFunction::ReplMain { name, .. } => name,
             MainFunction::Smain | MainFunction::SmainStdin | MainFunction::SmainStdinLines => SMAIN,
         }
@@ -62,6 +64,7 @@ impl MainFunction {
     pub fn kind(&self) -> &'static str {
         match self {
             MainFunction::Main => "Main",
+            MainFunction::TaskMain => "TaskMain",
             MainFunction::ReplMain { .. } => "ReplMain",
             MainFunction::Smain => "Smain",
             MainFunction::SmainStdin => "SmainStdin",
@@ -72,7 +75,10 @@ impl MainFunction {
     /// Returns `true` if the run prints what the entry point gives back. Only
     /// an `smain` is written to be read that way; the repl prints its own.
     pub fn show_output(&self) -> bool {
-        !matches!(self, MainFunction::Main | MainFunction::ReplMain { .. })
+        !matches!(
+            self,
+            MainFunction::Main | MainFunction::TaskMain | MainFunction::ReplMain { .. }
+        )
     }
 }
 

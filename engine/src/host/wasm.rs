@@ -76,7 +76,7 @@ pub fn next_event() -> Option<String> {
 }
 
 pub fn wait_event(timeout_ms: i32) -> i32 {
-    unsafe{ffi::wait_event(timeout_ms)}
+    unsafe { ffi::wait_event(timeout_ms) }
 }
 
 pub fn draw_svg(str: String) {

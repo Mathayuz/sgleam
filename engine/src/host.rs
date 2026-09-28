@@ -9,6 +9,9 @@
 /// first call does the work and a later one gives back its result.
 pub use target::init;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use target::{task_get, task_write_file};
+
 /// Returns `true` if an interruption is waiting, `false` otherwise. Reading the
 /// request clears it, so the run after an interrupted one does not stop at its
 /// first check.
@@ -46,6 +49,8 @@ mod target;
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "host/native.rs"]
 mod target;
+#[cfg(target_arch = "wasm32")]
+pub use target::{draw_view, next_event, wait_event};
 
 /// `system.now_ms` gives milliseconds since the epoch, and `world` times its
 /// ticks by it.

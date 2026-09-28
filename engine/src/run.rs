@@ -58,7 +58,16 @@ fn get_main(module: &Module) -> Result<MainFunction, SgleamError> {
             .ast
             .type_info
             .get_main_function(Target::JavaScript)
-            .map(|_| MainFunction::Main)?),
+            .map(|_| {
+                let task_main = get_function(module, "main")
+                    .and_then(|main| main.return_type.fn_types())
+                    .is_some_and(|(args, result)| args.is_empty() && result.is_int());
+                if task_main {
+                    MainFunction::TaskMain
+                } else {
+                    MainFunction::Main
+                }
+            })?),
     }
 }
 

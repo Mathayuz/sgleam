@@ -3,34 +3,36 @@ import gleam/dynamic/decode.{type Decoder}
 import gleam/result
 
 import sgleam/system
+import sgleam/task.{type Task}
 import sgleam/ui/element.{type Element}
 import sgleam/ui/event.{type Event, type Handler}
 import sgleam/ui/html
 
 /// Defines an MVU application.
-/// `init` creates the initial model.
+/// `init` creates a task producing the initial model.
 /// `view` describes the interface for a model.
-/// `update` produces a new model from a message.
+/// `update` creates a task producing a new model from a message.
+/// Effects run sequentially before the next view is rendered.
 pub opaque type App(model, msg) {
   App(
-    init: fn() -> model,
+    init: fn() -> Task(model),
     view: fn(model) -> Element(msg),
-    update: fn(model, msg) -> model,
+    update: fn(model, msg) -> Task(model),
   )
 }
 
 /// Creates an application.
 pub fn create(
-  init: fn() -> model,
+  init: fn() -> Task(model),
   view: fn(model) -> Element(msg),
-  update: fn(model, msg) -> model,
+  update: fn(model, msg) -> Task(model),
 ) -> App(model, msg) {
   App(init:, view:, update:)
 }
 
 /// Starts the application and runs its event loop.
 pub fn run(app: App(model, msg)) -> Nil {
-  loop(app, app.init())
+  loop(app, task.run(app.init()))
 }
 
 fn loop(app: App(model, msg), model: model) -> Nil {
@@ -70,7 +72,7 @@ fn drain(
 
         use message <- result.try(event.apply(handler, incoming_event))
 
-        Ok(app.update(model, message))
+        Ok(task.run(app.update(model, message)))
       }
 
       drain(app, handlers, result.unwrap(next_model, model))

@@ -45,3 +45,27 @@ pub use bitmap::load_bitmap;
 #[path = "native/text.rs"]
 mod text;
 pub use text::text_metrics;
+
+/// Task operations report failures as data to the Gleam continuation.
+pub fn task_get(url: String) -> (bool, String) {
+    let result = (|| -> Result<String, reqwest::Error> {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?
+            .get(url)
+            .send()?
+            .error_for_status()?
+            .text()
+    })();
+    match result {
+        Ok(body) => (true, body),
+        Err(error) => (false, error.to_string()),
+    }
+}
+
+pub fn task_write_file(path: String, content: String) -> (bool, String) {
+    match std::fs::write(path, content) {
+        Ok(()) => (true, String::new()),
+        Err(error) => (false, error.to_string()),
+    }
+}

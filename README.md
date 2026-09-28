@@ -111,6 +111,17 @@ world.create(initial_state, draw)
 Both work best in the web version, which shows the picture as you go. The
 [examples](examples/) directory has a few complete programs.
 
+## Tasks and UI applications
+
+`sgleam/task` represents deferred effects as functions. A `main` returning
+`Task(Int)` is executed automatically; see [the download example](examples/task_download.gleam).
+HTTP and file tasks currently require the native host.
+
+`sgleam/ui/simple_app` provides `SimpleApp` with direct model updates.
+`sgleam/ui/app` provides `App` whose initialization and updates return
+`Task(model)`. Existing UI programs can use `import sgleam/ui/simple_app as app`.
+See [the task guide (Portuguese)](docs/pt-br/tasks.md) for execution and migration details.
+
 ## Documentation
 
 The guides are in [English](docs/en/) and in

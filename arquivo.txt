@@ -1,0 +1,614 @@
+<!doctype html><html lang="pt-BR" dir="ltr">
+  <head>
+	<meta name="generator" content="Hugo 0.159.2">
+    <title>Marco A L Barbosa</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="/css/code.css">
+    <link rel="stylesheet" href="/css/style.css">
+    
+    
+    <script
+      data-goatcounter="https://stats.malbarbo.pro.br/count"
+      async
+      src="https://stats.malbarbo.pro.br/count.js"></script>
+    
+  </head>
+  <body class="d-flex flex-column min-vh-100 bg-body-tertiary">
+    <header class="border-bottom bg-white nav-header">
+      <div class="container nav-container py-3">
+        <a class="fs-4 fw-semibold text-body text-decoration-none me-auto" href="/">Marco A L Barbosa</a>
+        <input type="checkbox" id="nav-toggle" class="nav-toggle-input" hidden>
+        <label for="nav-toggle" class="nav-hamburger" aria-label="Menu">&#9776;</label>
+        <nav class="nav-menu" aria-label="Navegação principal">
+            <a class="nav-link px-0 px-md-2" href="/ensino/">Ensino</a>
+            <a class="nav-link px-0 px-md-2" href="/projetos/">Projetos</a>
+            <a class="nav-link px-0 px-md-2" href="/textos/">Textos</a>
+            <a class="nav-link px-0 px-md-2" href="/formacao/">Formação</a>
+            <a class="nav-link px-0 px-md-2" href="/contato/">Contato</a>
+        </nav>
+      </div>
+    </header>
+    <main class="flex-grow-1 py-4 py-md-5">
+      <div class="container">
+
+
+
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+  
+    
+    
+      
+    
+  
+
+
+
+
+  
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+
+
+  
+    
+      
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+  
+
+
+<section class="pb-4">
+  <div class="row g-4 align-items-center">
+    <div class="col-12 col-lg-4 order-1 order-lg-2">
+      <div class="text-center text-lg-end">
+        <img
+          alt="Foto do autor da página"
+          class="img-fluid rounded hero-photo"
+          src="/img/malbarbo.png"
+          width="180">
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8 order-2 order-lg-1">
+      <div class="mt-0">
+        <p>Sou Professor Adjunto no Departamento de Informática da Universidade Estadual
+de Maringá e doutor em Ciência da Computação e Matemática Computacional pela
+Universidade de São Paulo (<a href="/formacao/" data-goatcounter-click="home-formacao" data-goatcounter-title="Home Formacao">formação</a>).</p>
+<p>Trabalho principalmente com materiais e ferramentas relacionadas a linguagens
+de programação e ensino de programação (<a href="/projetos/" data-goatcounter-click="home-projetos" data-goatcounter-title="Home Projetos">projetos</a>).</p>
+<p>Meus perfis no
+<a href="https://github.com/malbarbo/" data-goatcounter-click="home-github" data-goatcounter-title="Home GitHub"><svg aria-hidden="true" class="social-icon" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub</a>
+e no
+<a href="https://stackoverflow.com/users/5189607/malbarbo" data-goatcounter-click="home-stackoverflow" data-goatcounter-title="Home Stack Overflow"><svg aria-hidden="true" class="social-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M15 21v-6h2v8H5v-8h2v6h8Zm-6.83-7.88 9.66 2.03-.41 1.96-9.66-2.03.41-1.96Zm1.27-4.24 8.94 4.17-.85 1.81-8.95-4.17.86-1.81Zm2.52-4.43 7.58 6.31-1.28 1.54-7.58-6.31 1.28-1.54ZM16.85 0 18.5 1.13l-5.54 8.02-1.65-1.13L16.85 0Z"/></svg> Stack Overflow</a>
+mostram parte desse trabalho. Para entrar em contato, veja a página de
+<a href="/contato/" data-goatcounter-click="home-contato" data-goatcounter-title="Home Contato">contato</a>.</p>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Disciplinas 2026</h2>
+  
+    <ul>
+      
+        <li>
+          <a href="/ensino/2026/6879/">6879 (2026/1)</a>
+          - Fundamentos de Algoritmos
+        </li>
+      
+        <li>
+          <a href="/ensino/2026/11917/">11917 (2026/2)</a>
+          - Programação Funcional
+        </li>
+      
+        <li>
+          <a href="/ensino/2026/12026/">12026 (2026/2)</a>
+          - Programação Funcional
+        </li>
+      
+    </ul>
+  
+</section>
+
+      </div>
+    </main>
+    
+  <script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a41f7279bd00f1cd',t:'MTc5MDU2Mzg5NQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
