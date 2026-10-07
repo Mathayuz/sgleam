@@ -113,14 +113,17 @@ Both work best in the web version, which shows the picture as you go. The
 
 ## Tasks and UI applications
 
-`sgleam/task` represents deferred effects as functions. A `main` returning
-`Task(Int)` is executed automatically; see [the download example](examples/task_download.gleam).
-HTTP and file tasks currently require the native host.
+`sgleam/task` builds pure request descriptions and continuations. It does not
+perform HTTP, file writes or printing. The separate `sgleam/task/fake` interpreter
+returns predefined responses and an ordered request history without I/O.
+A `main` returning `Task(Int)` is interpreted with the fixed download-demo fixtures.
+See [the program](examples/task_download.gleam) and
+[its simulation report](examples/task_fake.gleam).
 
-`sgleam/ui/simple_app` provides `SimpleApp` with direct model updates.
-`sgleam/ui/app` provides `App` whose initialization and updates return
-`Task(model)`. Existing UI programs can use `import sgleam/ui/simple_app as app`.
-See [the task guide (Portuguese)](docs/pt-br/tasks.md) for execution and migration details.
+`sgleam/ui/simple_app` uses direct model updates. `sgleam/ui/app` uses
+`Task(model)` descriptions; `app.run_with` supplies the environment interpreter.
+See [the examples](examples/README.md) and
+[the implementation guide (Portuguese)](docs/pt-br/tasks.md).
 
 ## Documentation
 

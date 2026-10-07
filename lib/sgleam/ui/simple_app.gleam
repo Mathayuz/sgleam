@@ -16,6 +16,7 @@ pub opaque type SimpleApp(model, msg) {
     init: fn() -> model,
     view: fn(model) -> Element(msg),
     update: fn(model, msg) -> model,
+    should_stop: fn(model) -> Bool,
   )
 }
 
@@ -25,7 +26,16 @@ pub fn create(
   view: fn(model) -> Element(msg),
   update: fn(model, msg) -> model,
 ) -> SimpleApp(model, msg) {
-  SimpleApp(init:, view:, update:)
+  SimpleApp(init:, view:, update:, should_stop: fn(_) { False })
+}
+
+/// Stops after rendering a model for which the predicate returns True.
+/// Checked at initialization and after each update, before consuming more events.
+pub fn stop_when(
+  app: SimpleApp(model, msg),
+  predicate: fn(model) -> Bool,
+) -> SimpleApp(model, msg) {
+  SimpleApp(..app, should_stop: predicate)
 }
 
 /// Starts the application and runs its event loop.
@@ -40,12 +50,16 @@ fn loop(app: SimpleApp(model, msg), model: model) -> Nil {
 
   system.show_view(html)
 
-  case system.wait_event(-1) {
-    system.HasEvent -> loop(app, drain(app, handlers, model))
+  case app.should_stop(model) {
+    True -> Nil
+    False ->
+      case system.wait_event(-1) {
+        system.HasEvent -> loop(app, drain(app, handlers, model))
 
-    system.Timeout -> loop(app, model)
+        system.Timeout -> loop(app, model)
 
-    system.Stopped -> Nil
+        system.Stopped -> Nil
+      }
   }
 }
 
@@ -54,27 +68,31 @@ fn drain(
   handlers: Dict(Int, Handler(msg)),
   model: model,
 ) -> model {
-  case system.next_event() {
-    Error(_) -> model
+  case app.should_stop(model) {
+    True -> model
+    False ->
+      case system.next_event() {
+        Error(_) -> model
 
-    Ok(raw) -> {
-      let next_model = {
-        use incoming <- result.try(
-          decode.run(raw, incoming_decoder())
-          |> result.replace_error(Nil),
-        )
+        Ok(raw) -> {
+          let next_model = {
+            use incoming <- result.try(
+              decode.run(raw, incoming_decoder())
+              |> result.replace_error(Nil),
+            )
 
-        let Ui(handler: handler_id, event: incoming_event) = incoming
+            let Ui(handler: handler_id, event: incoming_event) = incoming
 
-        use handler <- result.try(dict.get(handlers, handler_id))
+            use handler <- result.try(dict.get(handlers, handler_id))
 
-        use message <- result.try(event.apply(handler, incoming_event))
+            use message <- result.try(event.apply(handler, incoming_event))
 
-        Ok(app.update(model, message))
+            Ok(app.update(model, message))
+          }
+
+          drain(app, handlers, result.unwrap(next_model, model))
+        }
       }
-
-      drain(app, handlers, result.unwrap(next_model, model))
-    }
   }
 }
 

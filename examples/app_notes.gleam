@@ -1,6 +1,6 @@
-// Digitar só muda o modelo; salvar executa a gravação e registra o resultado.
-// write_file requer o host nativo e substitui o arquivo indicado.
+// Simulação pura: apenas anotacoes.txt com o conteúdo inicial é conhecido.
 import sgleam/task.{type Task}
+import sgleam/task/fake
 import sgleam/ui/app
 import sgleam/ui/button
 import sgleam/ui/element.{type Element}
@@ -20,7 +20,11 @@ type Msg {
 }
 
 fn init() -> Task(Model) {
-  task.done(Model("anotacoes.txt", "", "Escreva uma anotação e salve."))
+  task.done(Model(
+    "anotacoes.txt",
+    "Minha anotação",
+    "Simulação: nenhum arquivo será criado.",
+  ))
 }
 
 fn update(model: Model, message: Msg) -> Task(Model) {
@@ -32,10 +36,9 @@ fn update(model: Model, message: Msg) -> Task(Model) {
     Save -> {
       use result <- task.write_file(model.path, model.content)
       let status = case result {
-        Ok(_) -> "Salvo em " <> model.path
+        Ok(_) -> "Gravação simulada em " <> model.path
         Error(reason) -> "Não foi possível salvar: " <> reason
       }
-      use _ <- task.println(status)
       task.done(Model(..model, status:))
     }
   }
@@ -60,5 +63,21 @@ fn view(model: Model) -> Element(Msg) {
 }
 
 pub fn main() {
-  app.create(init, view, update) |> app.run
+  app.create(init, view, update)
+  |> app.run_with(fn(program) {
+    let report =
+      fake.run(program, [
+        fake.WriteFileResponse("anotacoes.txt", "Minha anotação", Ok(Nil)),
+      ])
+    case report.result {
+      Ok(model) -> model
+      Error(fake.UnexpectedRequest(fake.WriteFile(path, content))) ->
+        Model(
+          path,
+          content,
+          "Pedido desconhecido: use anotacoes.txt e Minha anotação.",
+        )
+      Error(_) -> Model("", "", "Pedido desconhecido no fake.")
+    }
+  })
 }

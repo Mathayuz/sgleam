@@ -1,61 +1,75 @@
-# Exemplos de SimpleApp e App
+# Exemplos de SimpleApp, App e pedidos simulados
 
-O [simple_counter.gleam](simple_counter.gleam) é um contador com `SimpleApp`:
-`init` retorna `Int`, e `update` calcula o próximo `Int` diretamente. Ele tem
-botões para diminuir, aumentar e zerar, sem tarefas ou impressão na lógica do
-modelo. Compare-o com `app_counter.gleam`, que usa tarefas para imprimir.
-
-Os exemplos com prefixo `app_` utilizam `sgleam/ui/app`: `init` e `update` retornam
-`Task(model)`, e o executor da aplicação executa essas tarefas.
-
-| Exemplo | O que demonstra |
+| Exemplo | Comportamento |
 | --- | --- |
-| [app_counter.gleam](app_counter.gleam) | Impressão na inicialização e ao incrementar/decrementar; reset com `task.done` sem impressão. |
-| [app_notes.gleam](app_notes.gleam) | Edição sem I/O e gravação explícita ao salvar, com sucesso ou erro no modelo e no console. |
-| [app_http.gleam](app_http.gleam) | GET ao clicar, tratamento de erros e prévia textual de até 500 caracteres da resposta. |
+| [simple_counter.gleam](simple_counter.gleam) | Contador com init e update retornando Int diretamente. |
+| [app_counter.gleam](app_counter.gleam) | Contador que descreve pedidos de impressão; o fake reconhece as três mensagens e não imprime nada. |
+| [app_notes.gleam](app_notes.gleam) | Simula salvar `Minha anotação` em `anotacoes.txt`, sem tocar no disco. Outros pedidos são mostrados como desconhecidos. |
+| [app_http.gleam](app_http.gleam) | Simula uma resposta para `https://malbarbo.pro.br` e uma falha para `https://erro.exemplo`, sem rede. Outras URLs são desconhecidas. |
+| [task_download.gleam](task_download.gleam) | O main descreve GET, gravação e impressão. O ambiente usa o fake padrão e não produz saída nem arquivo. |
+| [task_fake.gleam](task_fake.gleam) | Executa dez verificações com asserções e devolve um resumo de sucesso ao ambiente. |
 
-## Como verificar e executar
-
-Na raiz do repositório, confira os exemplos sem executar seus efeitos:
+Na raiz do projeto:
 
 ```sh
-cargo run -- check examples/simple_counter.gleam
 cargo run -- check examples/app_counter.gleam
 cargo run -- check examples/app_notes.gleam
 cargo run -- check examples/app_http.gleam
+cargo run -- examples/task_download.gleam
+cargo run -- examples/task_fake.gleam
 ```
 
-Para executar a inicialização de um exemplo no CLI:
+`task_download` termina silenciosamente. `task_fake` usa `smain`: o ambiente
+exibe a lista de verificações aprovadas. Cada verificação compara resultados e históricos
+ou valida regras de composição. Uma asserção interrompe o programa em caso de falha. Isso não executa o pedido `Println("Sucesso")`;
+a impressão de relatórios é uma capacidade do ambiente de apresentação.
 
-```sh
-cargo run -- examples/simple_counter.gleam
+Os exemplos de App usam `app.run_with` para fornecer configurações explícitas
+para o fake. A lógica de `init` e `update` constrói descrições e não realiza I/O.
+A configuração da simulação pertence à composição com o ambiente em `main`.
+
+O host nativo de UI ainda mostra HTML e encerra o loop, sem janela interativa.
+Cliques e digitação exigem o host de eventos web. O fake é escrito em Gleam puro
+e não depende de capacidades de HTTP ou arquivo do host. Não houve atualização
+do repositório simplecode nesta alteração.
+
+No bloco de notas, os dados iniciais correspondem exatamente à resposta
+configurada. Alterar o caminho ou conteúdo demonstra a rejeição de pedidos
+desconhecidos; nenhum conteúdo é gravado, mesmo quando a simulação tem sucesso.
+
+Mais detalhes em [Task, SimpleApp e App](../docs/pt-br/tasks.md).
+
+## Galeria visual completa
+
+[ui_gallery.gleam](ui_gallery.gleam) reúne Text, Button, TextInput, TextArea,
+Checkbox, Radio, Picker, Link e layouts Row/Column. Inclui controles
+desabilitados, placeholders, botões com textos curtos e longos e um status
+da última interação. Usa SimpleApp e atualizações diretas do modelo.
+
+Copie o arquivo completo para o editor do playground, carregue-o e execute
+`main()` no REPL. Compare botões em linha e em coluna, teste Enter no campo
+de nome, seleção e digitação. O link externo abre o site do Gleam em uma nova aba (`link.new_tab(True)`).
+O botão de restaurar devolve todos os valores ao estado inicial.
+
+A galeria utiliza os estilos existentes do host, sem acrescentar CSS próprio,
+para que diferenças de largura, alinhamento e espaçamento fiquem visíveis.
+
+## Parar a aplicação com stop_when
+
+`simple_app.stop_when` e `app.stop_when` recebem `fn(model) -> Bool`.
+Sem essa configuração, o comportamento anterior é preservado.
+
+```gleam
+simple_app.create(init, view, update)
+|> simple_app.stop_when(fn(model) { model.count >= 5 })
+|> simple_app.run
 ```
 
-O host nativo atual imprime o HTML e encerra o loop: **não abre uma janela e
-não recebe cliques ou digitação**. A interação exige um host com suporte aos
-eventos de UI, como a integração web, usando uma versão atualizada deste engine.
-O simplecode não foi atualizado junto com estes exemplos.
-
-O contador usa apenas impressão como efeito e não precisa de HTTP ou arquivos.
-Já os exemplos de notas e HTTP combinam UI com capacidades que, atualmente,
-existem apenas no host nativo. No host WASM, salvar ou consultar retorna `Error`,
-e esses exemplos mostram a mensagem na interface. Portanto, a combinação de
-UI interativa com sucesso de HTTP/gravação ainda depende de integrar essas
-capacidades no mesmo host; os exemplos não adicionam essa integração.
-
-As tarefas são síncronas. A consulta não mostra um estado intermediário de
-carregamento: o próximo modelo é renderizado após a operação terminar.
-Nenhum dos exemplos de notas ou HTTP grava arquivos ou acessa a rede em `init`.
-Salvar substitui o arquivo escolhido, com caminho relativo ao diretório atual
-do processo, e não cria diretórios intermediários.
-
-## Roteiro de leitura
-
-1. Comece pelo contador para acompanhar `init → Task(Int)`, `view` e `update`.
-2. No bloco de notas, compare `Edit`, que usa apenas `task.done`, com `Save`,
-   que encadeia `write_file` e `println` antes de devolver o modelo.
-3. Na consulta HTTP, observe como cada ramo de `Result` termina em `Task(Model)`.
-   O corpo remoto é renderizado como texto escapado, não inserido como HTML.
-
-A explicação completa da implementação está em
-[Task, SimpleApp e App](../docs/pt-br/tasks.md).
+O predicado deve ser puro. Ele é verificado no estado inicial e após cada
+atualização, inclusive entre eventos do mesmo lote. Quando retorna True,
+a view final é renderizada e run retorna Nil, sem esperar ou consumir outro
+evento. A aplicação não fecha a aba nem o processo. A view final permanece;
+se quiser mostrar botões desabilitados, faça isso em view, como no exemplo
+`examples/simple_stop_when.gleam`. A condição não interrompe uma atualização
+ou interpretação já em andamento. Um stop_when posterior substitui o anterior.
+No App, a mesma opção funciona com run e run_with.

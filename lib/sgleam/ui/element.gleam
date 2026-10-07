@@ -70,7 +70,7 @@ pub opaque type PickerRepr(msg) {
 }
 
 pub opaque type LinkRepr(msg) {
-  LinkRepr(label: String, uri: String, on_press: Option(msg))
+  LinkRepr(label: String, uri: String, on_press: Option(msg), new_tab: Bool)
 }
 
 type LayoutDirection {
@@ -253,7 +253,11 @@ pub fn checkbox_data(
 
 // Radio
 
-pub fn new_radio(group: String, value: String, checked: Bool) -> RadioRepr(msg) {
+pub fn new_radio(
+  group: String,
+  value: String,
+  checked: Bool,
+) -> RadioRepr(msg) {
   RadioRepr(
     group: group,
     value: value,
@@ -328,11 +332,19 @@ pub fn picker_data(
 // Link
 
 pub fn new_link(label: String, uri: String) -> LinkRepr(msg) {
-  LinkRepr(label: label, uri: uri, on_press: None)
+  LinkRepr(label: label, uri: uri, on_press: None, new_tab: False)
 }
 
 pub fn link_on_press(repr: LinkRepr(msg), message: msg) -> LinkRepr(msg) {
   LinkRepr(..repr, on_press: Some(message))
+}
+
+pub fn link_new_tab(repr: LinkRepr(msg), enabled: Bool) -> LinkRepr(msg) {
+  LinkRepr(..repr, new_tab: enabled)
+}
+
+pub fn link_opens_new_tab(repr: LinkRepr(msg)) -> Bool {
+  repr.new_tab
 }
 
 pub fn link_done(repr: LinkRepr(msg)) -> Element(msg) {

@@ -232,17 +232,6 @@ fn add_sgleam(ctx: &Ctx) -> Result<()> {
     set_fn(&sgleam, "load_bitmap", |path: String| {
         List(load_bitmap(path))
     })?;
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        set_fn(&sgleam, "task_get", |url: String| {
-            List(crate::host::task_get(url))
-        })?;
-        set_fn(
-            &sgleam,
-            "task_write_file",
-            |path: String, content: String| List(crate::host::task_write_file(path, content)),
-        )?;
-    }
     ctx.globals().set("sgleam", sgleam)
 }
 

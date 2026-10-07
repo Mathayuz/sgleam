@@ -1,7 +1,7 @@
-// HTTP é executado somente ao receber Fetch; falhas viram estado da interface.
-// get requer o host nativo e bloqueia enquanto aguarda a resposta.
+// Consulta simulada por respostas predefinidas, sem rede.
 import gleam/string
 import sgleam/task.{type Task}
+import sgleam/task/fake
 import sgleam/ui/app
 import sgleam/ui/button
 import sgleam/ui/element.{type Element}
@@ -29,17 +29,15 @@ fn update(model: Model, message: Msg) -> Task(Model) {
       use response <- task.get(model.url)
       case response {
         Ok(body) -> {
-          use _ <- task.println("Consulta concluída: " <> model.url)
           task.done(
             Model(
               ..model,
               preview: string.slice(body, 0, 500),
-              status: "Resposta recebida. Exibindo até 500 caracteres.",
+              status: "Resposta simulada. Exibindo até 500 caracteres.",
             ),
           )
         }
         Error(reason) -> {
-          use _ <- task.println("Falha na consulta: " <> reason)
           task.done(Model(..model, preview: "", status: "Erro: " <> reason))
         }
       }
@@ -63,5 +61,21 @@ fn view(model: Model) -> Element(Msg) {
 }
 
 pub fn main() {
-  app.create(init, view, update) |> app.run
+  app.create(init, view, update)
+  |> app.run_with(fn(program) {
+    let report =
+      fake.run(program, [
+        fake.GetResponse(
+          "https://malbarbo.pro.br",
+          Ok("Conteúdo predefinido do fake."),
+        ),
+        fake.GetResponse("https://erro.exemplo", Error("Falha simulada")),
+      ])
+    case report.result {
+      Ok(model) -> model
+      Error(fake.UnexpectedRequest(fake.Get(url))) ->
+        Model(url, "", "URL desconhecida no fake.")
+      Error(_) -> Model("", "", "Pedido desconhecido no fake.")
+    }
+  })
 }

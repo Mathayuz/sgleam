@@ -1,265 +1,183 @@
-# Implementação de Task, SimpleApp e App
+# Task como descrição pura e executor fake
 
-Este documento explica a implementação de tarefas com efeitos no **sgleam**:
-a representação dos tipos, a composição com `use`, a integração com o executor,
-a execução de HTTP e arquivos e a separação das aplicações de interface.
-Descreve o comportamento atual, incluindo suas limitações.
+## 1. Objetivo e correção da implementação anterior
 
-As alterações desta implementação pertencem ao repositório sgleam. O projeto
-simplecode e sua cópia em `engines/sgleam` não foram atualizados automaticamente.
+O programa descreve os efeitos que deseja solicitar. O ambiente interpreta
+essas descrições. Nesta versão existe somente um interpretador **fake**, que
+responde a pedidos conhecidos com valores predefinidos e devolve um histórico.
+Ele não acessa rede, não grava arquivos e não imprime mensagens.
 
-## 1. Objetivo e conceitos
+A versão anterior usava `Task(a) = fn() -> a` e colocava chamadas reais de I/O
+dentro dessas funções. Isso apenas adiava os efeitos. Essa representação foi
+substituída por dados que representam pedidos e suas continuações.
+As funções Rust de GET/gravação, seus registros no QuickJS, a ponte FFI dessas
+operações e a dependência direta de reqwest foram removidos.
 
-Um efeito colateral é uma interação observável além do valor retornado por uma
-função: imprimir, gravar um arquivo ou fazer uma requisição HTTP, por exemplo.
-O objetivo é representar essas operações como valores que possam ser compostos
-antes de sua execução.
+A semelhança com `Cmd` de Elm está na separação entre descrição e interpretação.
+Esta API não é uma reprodução de `Cmd`: uma `Task(a)` descreve uma sequência que
+produz `a`, com dependências expressas por continuações, e o fake a interpreta
+sincronamente. Não existe agendador, concorrência ou executor real nesta versão.
 
-A proposta tem duas partes:
+## 2. Representação de Task
 
-- `Task(a)` representa uma computação adiada que produz um valor do tipo `a`.
-- `App(model, msg)` recebe tarefas para inicializar e atualizar seu modelo.
-
-A API anterior, com inicialização e atualização retornando diretamente o modelo,
-foi preservada no módulo `sgleam/ui/simple_app`, com o tipo `SimpleApp`.
-
-A separação é um contrato de organização do programa. Gleam não verifica a
-pureza dessas funções: uma função que retorna `Int` ainda pode chamar I/O.
-Além disso, o próprio executor de `SimpleApp` realiza efeitos para mostrar a
-interface e receber eventos. O termo “sem efeitos” se refere ao estilo esperado
-para a lógica de inicialização e atualização do modelo.
-
-## 2. Representação de Task como função
-
-Arquivo: [lib/sgleam/task.gleam](../../lib/sgleam/task.gleam).
+Arquivo: [task.gleam](../../lib/sgleam/task.gleam).
 
 ```gleam
-pub type Task(a) =
-  fn() -> a
-```
-
-Esse tipo é um **alias**, e não um tipo opaco ou uma estrutura com construtor.
-Por isso, `Task(Int)` e `fn() -> Int` são o mesmo tipo para o compilador.
-Uma função sem argumentos é suficiente para guardar uma computação e executá-la
-posteriormente. Essa representação também é conhecida como *thunk*.
-
-```gleam
-fn() { 10 }
-```
-
-A expressão acima cria uma função; seu corpo só é avaliado quando ela é chamada.
-Uma tarefa pode capturar valores do contexto, como a URL de uma requisição ou o
-conteúdo de um arquivo, por meio de uma closure.
-
-### 2.1. Construir, executar e repetir
-
-```gleam
-import sgleam/task
-
-pub fn main() {
-  let tarefa = {
-    use _ <- task.println("Executando")
-    task.done(42)
-  }
-
-  // Até aqui, a mensagem não foi impressa.
-  let assert 42 = task.run(tarefa)
-  let assert 42 = task.run(tarefa)
+pub type Task(a) {
+  Done(value: a)
+  Get(url: String, next: fn(Result(String, String)) -> Task(a))
+  WriteFile(path: String, content: String, next: fn(Result(Nil, String)) -> Task(a))
+  Println(message: String, next: fn(Nil) -> Task(a))
 }
 ```
 
-A mensagem aparece duas vezes. Não há cache do resultado, execução automática
-na criação ou restrição que impeça executar uma tarefa mais de uma vez.
+É um tipo nominal com quatro variantes. Uma tarefa não é mais uma função
+executável: é um valor que pode ser inspecionado pelo interpretador usando `case`.
+Os construtores são públicos para permitir interpretadores separados em Gleam.
+Nenhuma variante contém uma função de I/O fornecida pela biblioteca.
 
-### 2.2. O adiamento depende de onde o código fica
+| Variante | Significado |
+| --- | --- |
+| `Done(valor)` | A computação terminou com esse valor. |
+| `Get(url, next)` | Pedido de consulta; next descreve como continuar com a resposta. |
+| `WriteFile(path, content, next)` | Pedido de gravação; não abre nem modifica arquivo. |
+| `Println(message, next)` | Pedido de impressão; não chama gleam/io. |
 
-Gleam avalia os argumentos de uma chamada antes de entrar na função. Portanto,
-`done(expressao)` não adia a avaliação de `expressao`; guarda o valor já calculado.
+As continuações são funções da lógica do programa. Elas recebem respostas e
+produzem as próximas descrições. Isso permite que o conteúdo de um pedido de
+gravação dependa da resposta de um GET sem fazer a consulta durante a construção.
 
-```gleam
-// A impressão acontece agora, ao avaliar o argumento de done.
-let tarefa = task.done(io.println("agora"))
-```
+## 3. Funções públicas e use
 
-O trecho acima pressupõe os imports de `gleam/io` e `sgleam/task`.
-Para adiar um efeito, ele precisa ficar dentro da função da tarefa, como acontece
-nas operações públicas deste módulo. Também é possível construir diretamente
-`fn() { io.println("depois") }`, pois Task é um alias de função.
-
-## 3. Operações fundamentais
-
-### 3.1. done: concluir com um valor
-
-```gleam
-pub fn done(value: a) -> Task(a) {
-  fn() { value }
-}
-```
-
-`done(0)` devolve uma função que retorna `0`. Não encerra o processo, não dispara
-as tarefas anteriores e não indica por si só sucesso ao sistema operacional.
-É a conclusão de uma sequência de tarefas com um resultado.
-
-### 3.2. run: executar uma tarefa
-
-```gleam
-pub fn run(task: Task(a)) -> a {
-  task()
-}
-```
-
-`run` chama a função. Não cria threads, não agenda trabalho em segundo plano e
-não transforma exceções em `Result`.
-
-### 3.3. then: compor duas etapas
-
-```gleam
-pub fn then(first: Task(a), next: fn(a) -> Task(b)) -> Task(b) {
-  fn() { run(next(run(first))) }
-}
-```
-
-A chamada a `then` constrói uma nova tarefa. Quando essa tarefa é executada:
-
-1. `run(first)` executa a primeira etapa e obtém um valor `a`.
-2. `next(valor)` constrói a tarefa seguinte a partir desse valor.
-3. `run(...)` executa a tarefa seguinte e devolve seu resultado `b`.
-
-Os tipos `a` e `b` podem ser diferentes. `then` também é chamado de operação
-*bind* em apresentações de mônadas. Aqui, sua implementação é somente composição
-de funções; não foi necessário adicionar uma construção nova à linguagem.
-
-```gleam
-import sgleam/task
-
-pub fn main() {
-  let primeira = task.done(20)
-  let segunda = {
-    use valor <- task.then(primeira)
-    task.done(valor + 22)
-  }
-  let assert 42 = task.run(segunda)
-}
-```
-
-`then` não interpreta `Ok` ou `Error`. Se o resultado da primeira tarefa for um
-`Result`, ele é entregue inteiro à continuação. O programa decide como tratar
-cada caso.
-
-## 4. Como use representa a continuação
-
-O `use` já existia no Gleam. Ele transforma o restante do bloco em uma função e
-passa essa função como último argumento da chamada.
+`done(value)` constrói `Done(value)`. `get`, `write_file` e `println` constroem
+suas variantes correspondentes. Não há `task.run` nem funções externas no módulo.
 
 ```gleam
 use resposta <- task.get(url)
 case resposta {
-  Ok(conteudo) -> task.done(conteudo)
-  Error(_) -> task.done("Falhou")
+  Ok(texto) -> task.done(texto)
+  Error(_) -> task.done("Falha")
 }
 ```
 
-É equivalente a:
+O trecho pressupõe o import de task e uma variável url. O `use` passa o restante
+do bloco como último argumento, sendo equivalente a:
 
 ```gleam
 task.get(url, fn(resposta) {
   case resposta {
-    Ok(conteudo) -> task.done(conteudo)
-    Error(_) -> task.done("Falhou")
+    Ok(texto) -> task.done(texto)
+    Error(_) -> task.done("Falha")
   }
 })
 ```
 
-Os dois trechos são expressões que pressupõem `url` e o import de `task`.
-A função recebida é a **continuação**: o código a executar depois da operação.
-O `use` não executa tarefas sozinho e não equivale a `await`.
+Construir esse valor não avalia a continuação. O fake a chama somente após
+localizar uma resposta configurada para o pedido.
 
-Nesta API, `task.get(url)` aparece com um único argumento na linha do `use`
-porque o compilador fornece o argumento restante. Fora desse contexto,
-`task.get(url)` não é uma chamada completa: é necessário fornecer a continuação.
+Todos os ramos devem retornar `Task(a)` do mesmo tipo de resultado. Por isso,
+o exemplo termina cada ramo com `task.done(0)` ou `task.done(1)`.
+`done` não executa pedidos, não encerra o processo e não altera seu exit status.
+Se um argumento de `done` for uma expressão, ela é avaliada normalmente antes
+da construção de `Done`; `done` não transforma funções impuras em puras.
 
-## 5. API de efeitos
+### Composição com then
 
-| Função | Argumentos explícitos antes da continuação | Valor entregue à continuação | Retorno |
-| --- | --- | --- | --- |
-| `println` | `message: String` | `Nil` | `Task(a)` |
-| `get` | `url: String` | `Result(String, String)` | `Task(a)` |
-| `write_file` | `path: String`, `content: String` | `Result(Nil, String)` | `Task(a)` |
-
-O `a` do retorno é escolhido pelo resultado final da continuação, não pela
-operação de I/O. Por exemplo, um GET pode participar de uma tarefa que termina
-retornando um inteiro, um texto ou o modelo de uma aplicação.
-
-### 5.1. println
+`then(first, next)` percorre a descrição para conectar a conclusão da primeira
+computação à próxima. Em `Done(value)`, devolve `next(value)`. Nos outros casos,
+reconstrói o mesmo pedido com uma continuação que faz essa composição.
+Não interpreta GET, gravação ou impressão.
 
 ```gleam
-pub fn println(message: String, next: fn(Nil) -> Task(a)) -> Task(a) {
-  then(fn() { io.println(message) }, next)
+let composta = {
+  use numero <- task.then(task.done(20))
+  task.done(numero + 22)
 }
 ```
 
-A impressão fica dentro da função passada a `then`. Depois dela, a continuação
-recebe `Nil`. O padrão usual descarta esse valor:
+O trecho constrói uma descrição com resultado 42, sem I/O. As continuações
+podem ser avaliadas durante a composição de um `Done`, pois são lógica pura.
+
+## 4. Executor fake
+
+Arquivo: [task/fake.gleam](../../lib/sgleam/task/fake.gleam).
 
 ```gleam
-use _ <- task.println("Sucesso")
-task.done(0)
+fake.run(programa, respostas) -> Report(a)
 ```
 
-`println` utiliza `gleam/io`; não utiliza as funções nativas novas de HTTP e
-arquivo. Ela também não expõe falhas de impressão como `Result`.
+A operação é uma transformação de dados: recebe a descrição e respostas e
+retorna resultado e histórico. Não depende do relógio, do disco ou da rede.
 
-### 5.2. get
-
-A assinatura é:
+### Respostas configuradas
 
 ```gleam
-pub fn get(
-  url: String,
-  next: fn(Result(String, String)) -> Task(a),
-) -> Task(a)
+[
+  fake.GetResponse("https://malbarbo.pro.br", Ok("conteúdo de demonstração")),
+  fake.WriteFileResponse("arquivo.txt", "conteúdo de demonstração", Ok(Nil)),
+  fake.PrintlnResponse("Sucesso"),
+]
 ```
 
-O corpo usa `then(fn() { get_raw(url) }, next)`. A função privada `get_raw`
-atravessa a interface de funções externas para chegar ao host.
+As comparações são exatas. GET compara a URL; gravação compara caminho **e
+conteúdo**; impressão compara a mensagem. A primeira resposta correspondente
+vence. As respostas são reutilizáveis, não são consumidas como uma fila.
+O histórico permite conferir separadamente a ordem e o número de pedidos.
 
-No host nativo, a operação usa `reqwest::blocking::Client` com suporte a TLS via
-Rustls. Um cliente é criado a cada execução. O código configura um timeout de
-30 segundos, envia GET, verifica o status com `error_for_status()` e lê o corpo
-como texto com `text()`.
+`PrintlnResponse` fornece a resposta `Nil`. Não imprime o texto: a ocorrência é
+registrada como `fake.Println(mensagem)` nos dados do relatório.
 
-- A URL deve conter o esquema, como `https://malbarbo.pro.br`.
-- Redirecionamentos seguem a política padrão da biblioteca.
-- Status HTTP 4xx e 5xx são erros.
-- Falhas de URL, conexão e leitura também chegam como `Error(mensagem)`.
-- O resultado contém o corpo textual, não status, cabeçalhos ou bytes brutos.
-- Não há retry automático implementado pela camada Task.
-
-### 5.3. write_file
-
-A assinatura é:
+### Resultado e histórico
 
 ```gleam
-pub fn write_file(
-  path: String,
-  content: String,
-  next: fn(Result(Nil, String)) -> Task(a),
-) -> Task(a)
+pub type Report(a) {
+  Report(result: Result(a, Failure), requests: List(Request))
+}
 ```
 
-A operação adiada chama `write_file_raw`. No host nativo, ela utiliza
-`std::fs::write` para gravar os bytes UTF-8 da string.
+O relatório de sucesso do exemplo contém:
 
-Um caminho relativo é resolvido a partir do diretório de trabalho do processo,
-e não do diretório do arquivo `.gleam`. Um arquivo existente é substituído.
-Diretórios intermediários não são criados. Não há escrita atômica, transação ou
-restauração automática do conteúdo anterior em caso de falha.
+```text
+result: Ok(0)
+requests:
+  Get("https://malbarbo.pro.br")
+  WriteFile("arquivo.txt", "conteúdo de demonstração")
+  Println("Sucesso")
+```
 
-O sucesso é `Ok(Nil)`; uma falha de I/O é `Error(mensagem)`.
+`requests` segue a ordem de interpretação. O fake acumula a lista internamente
+em ordem inversa e a inverte ao terminar, usando recursão em cauda no loop.
 
-## 6. Exemplo completo do download
+### Dois tipos diferentes de falha
 
-Arquivo: [examples/task_download.gleam](../../examples/task_download.gleam).
+1. **Resposta de erro configurada:** `GetResponse(url, Error("offline"))` é uma
+   resposta conhecida. O fake entrega esse `Error` à continuação e o próprio
+   programa escolhe o ramo de erro. O resultado final pode ser `Ok(1)` no relatório.
+2. **Pedido desconhecido:** o fake retorna
+   `Error(UnexpectedRequest(pedido))` no relatório. Não chama a continuação,
+   não inventa uma resposta e não tenta realizar I/O real. O pedido rejeitado
+   aparece no histórico, junto com todos os anteriores.
+
+Para simular erro de GET no main de download, configure a resposta de erro e
+`PrintlnResponse("erro no get")`. Para simular erro de gravação, configure GET
+com sucesso, WriteFileResponse com erro e `PrintlnResponse("erro no write_file")`.
+
+### Adaptadores do ambiente
+
+`fake.value(programa, respostas)` devolve o valor final quando o relatório é
+bem-sucedido. Se houver pedido desconhecido, gera um panic explicando que falta
+uma resposta. Ele não realiza os efeitos solicitados; é um adaptador para
+ambientes que precisam obter um modelo diretamente. Para tratar falhas como
+dados ou examinar o histórico, use `fake.run`.
+
+`demo_responses()` fornece exatamente os três pedidos conhecidos do download
+bem-sucedido. `demo_value(programa)` usa essas respostas. Essa configuração é
+uma demonstração, não uma simulação genérica de qualquer programa.
+
+## 5. O main de download
+
+O [programa original](../../examples/task_download.gleam) mantém a sintaxe com
+`use` e a assinatura `main() -> Task(Int)`. Seu corpo é:
 
 ```gleam
 import sgleam/task.{type Task}
@@ -288,413 +206,187 @@ pub fn main() -> Task(Int) {
 }
 ```
 
-Em relação à proposta original, o exemplo usa o caminho de módulo do projeto,
-`import sgleam/task.{type Task}`, e declara `pub fn main` para o executor.
-A URL contém o esquema HTTPS. Também foi acrescentado o `use _ <-` que faltava
-no ramo de erro de `write_file`.
-
-Sem esse último ajuste, `task.println("erro no write_file")` não fornece a
-continuação exigida pela função e não compila com essa API.
-
-### 6.1. Fluxo de sucesso e erro
+Interpretação com a configuração padrão:
 
 ```text
-main() constrói a tarefa
-  → executor chama a tarefa
-    → HTTP GET
-      → Error: imprimir erro no get → retornar 1
-      → Ok: write_file
-        → Error: imprimir erro no write_file → retornar 1
-        → Ok: imprimir Sucesso → retornar 0
+main constrói Get
+  → fake encontra a URL e fornece conteúdo predefinido
+  → continuação constrói WriteFile com esse conteúdo
+  → fake reconhece caminho e conteúdo e fornece Ok(Nil)
+  → continuação constrói Println("Sucesso")
+  → fake reconhece a mensagem e fornece Nil
+  → continuação retorna Done(0)
+  → relatório contém Ok(0) e três pedidos
 ```
 
-O `Result` determina o ramo executado. Um erro de HTTP impede que a gravação
-seja sequer alcançada. Um erro de gravação impede a impressão de sucesso.
-Cada ramo encerra com `Task(Int)`, mantendo o mesmo tipo de resultado.
+Não existe acesso ao site, criação ou substituição de arquivo, nem impressão
+de `Sucesso`. O conteúdo retornado é o da fixture, não o conteúdo atual do site.
 
-Para executar, na raiz do repositório:
+## 6. Integração com o ambiente sgleam
+
+[run.rs](../../engine/src/run.rs) reconhece o retorno nominal
+`sgleam/task.Task(Int)` e seleciona `MainFunction::TaskMain`. Um retorno
+`fn() -> Int` não é mais considerado uma tarefa. A precedência existente de
+`smain` foi preservada.
+
+O executor JavaScript chama `main()` para obter a descrição. Para `TaskMain`,
+passa esse valor a `fake.demo_value`, escrito em Gleam e compilado para JS.
+Ele não chama o valor como função e não despacha operações ao sistema operacional.
+
+A execução padrão do exemplo termina silenciosamente. O inteiro final não é
+convertido em código de saída do processo. Um pedido não previsto nas fixtures
+padrão causa erro do interpretador, que o ambiente apresenta como falha de execução.
+
+A regra automática permanece específica para `main -> Task(Int)`. Outros
+resultados podem ser interpretados explicitamente por um ambiente ou por
+`fake.run`. Não há autoexecução de tarefas arbitrárias no REPL.
+
+### Ver a demonstração
 
 ```sh
 cargo run -- examples/task_download.gleam
+cargo run -- examples/task_fake.gleam
 ```
 
-Em caso de sucesso, o comando imprime `Sucesso` e cria ou substitui
-`arquivo.txt` no diretório atual. O acesso ao site depende da rede e do serviço;
-os testes automatizados usam um servidor local para não depender desse site.
+O primeiro comando não imprime `Sucesso`. O segundo executa
+[task_fake.gleam](../../examples/task_fake.gleam), cujo `smain` executa dez verificações com asserções e devolve uma lista de resultados
+"OK". O exemplo cobre sucesso, erros simulados, pedidos desconhecidos, `then`,
+mudança de tipo, repetibilidade e seleção de respostas. Ele interrompe na primeira
+asserção que falhar.
+O ambiente imprime o valor de `smain` pela sua capacidade normal de apresentação.
+Isso é diferente de executar o pedido `Println`: o fake continua sem efeitos.
 
-## 7. Integração de main com o executor
+O interpretador usa apenas Gleam e funciona com os alvos nativo e WASM, sem
+registro de funções de HTTP ou arquivo. Não existe fallback para I/O real.
 
-Somente retornar uma função de `main` não executaria seu corpo. Por isso, a
-implementação também altera a seleção e a execução do ponto de entrada.
+## 7. SimpleApp e App
 
-### 7.1. Identificação pelo tipo
-
-Em [engine/src/run.rs](../../engine/src/run.rs), `get_main` mantém a seleção
-pré-existente de `smain`. Quando o ponto de entrada é `main`, examina seu tipo
-de retorno com `fn_types()`.
-
-Se o retorno for uma função sem argumentos cujo resultado é `Int`, escolhe
-`MainFunction::TaskMain`. Caso contrário, escolhe `MainFunction::Main`.
-
-A identificação é estrutural. Como `Task` é um alias, tanto a anotação
-`Task(Int)` quanto `fn() -> Int` levam ao mesmo comportamento. Não há uma marca
-em tempo de execução que distinga uma tarefa de outra função com esse tipo.
-
-### 7.2. Execução no JavaScript
-
-[engine/src/engine.rs](../../engine/src/engine.rs) define a variante `TaskMain`.
-Ela continua importando a função chamada `main` e não solicita impressão
-automática do resultado.
-
-[engine/src/quickjs.rs](../../engine/src/quickjs.rs) passa a identificação do
-ponto de entrada para `try_main`, na FFI JavaScript. O fluxo relevante é:
-
-```javascript
-r = main();
-if (input_kind === "TaskMain") {
-  r = r();
-}
-```
-
-A primeira chamada obtém a tarefa; a segunda realiza a computação adiada.
-A execução continua dentro do tratamento de erros existente em `try_main`.
-
-### 7.3. Alcance e código de saída
-
-A execução automática foi adicionada para `main` retornando `Task(Int)`.
-Não foi generalizada para `Task(String)`, `Task(Nil)`, `smain` ou qualquer valor
-exibido no REPL. Para outras situações, execute `task.run` explicitamente.
-
-O inteiro final **não é convertido em código de saída do processo**. Retornar
-`task.done(1)` é um resultado normal da tarefa e, por si só, não faz o processo
-sair com status 1. Esse comportamento preserva o tratamento atual do retorno
-de `main`. Erros de compilação e falhas de execução continuam seguindo o
-tratamento de erros já existente no executor.
-
-## 8. Caminho entre Gleam, JavaScript e Rust
-
-```text
-Programa Gleam
-    |
-    | task.get / task.write_file: constroem funções
-    v
-Task executada por run ou pelo executor de main
-    |
-    v
-get_raw / write_file_raw (@external)
-    |
-    v
-sgleam_ffi.mjs: task_get / task_write_file
-    |
-    v
-Objeto sgleam registrado pelo QuickJS
-    |
-    v
-Host nativo Rust
-    |
-    +-- reqwest: HTTP
-    +-- std::fs::write: arquivo
-```
-
-As funções Rust devolvem `(bool, String)`: sucesso com valor ou falha com uma
-mensagem. O adaptador de QuickJS usa `rquickjs::convert::List` para transferir a
-tupla como uma sequência JavaScript; isso não é uma `List` da API Gleam.
-
-A FFI converte a resposta para os construtores de `Result` usados pelo código
-Gleam compilado:
-
-| Operação | Resposta Rust | Resposta Gleam |
+| Função | SimpleApp | App |
 | --- | --- | --- |
-| GET bem-sucedido | `(true, corpo)` | `Ok(corpo)` |
-| Gravação bem-sucedida | `(true, "")` | `Ok(Nil)` |
-| Falha | `(false, mensagem)` | `Error(mensagem)` |
+| init | `fn() -> model` | `fn() -> Task(model)` |
+| view | `fn(model) -> Element(msg)` | `fn(model) -> Element(msg)` |
+| update | `fn(model, msg) -> model` | `fn(model, msg) -> Task(model)` |
 
-No JavaScript, o `Nil` dessa resposta é representado por `undefined`.
-
-### 8.1. Host nativo e WASM
-
-As funções de HTTP e gravação são registradas somente quando o alvo não é
-`wasm32`. A dependência `reqwest` também foi adicionada apenas para esse alvo.
-
-No host WASM atual, a FFI verifica a ausência das funções e retorna:
-
-- `Error("HTTP tasks are not supported by this host")`;
-- `Error("File tasks are not supported by this host")`.
-
-Esses resultados chegam à continuação normalmente. Não há implementação de
-`fetch`, download de arquivo no navegador ou persistência no simplecode nesta
-alteração. A compilação WASM passa, mas isso não significa que os efeitos de
-rede e arquivo estejam disponíveis nele.
-
-## 9. SimpleApp e App
-
-Os dois módulos seguem o padrão modelo–visualização–atualização (MVU):
-`model` representa o estado; `view` o transforma em elementos; `msg` representa
-uma mensagem gerada por um evento; `update` calcula o próximo estado.
-
-| Aspecto | `SimpleApp(model, msg)` | `App(model, msg)` |
-| --- | --- | --- |
-| Módulo | `sgleam/ui/simple_app` | `sgleam/ui/app` |
-| `init` | `fn() -> model` | `fn() -> Task(model)` |
-| `view` | `fn(model) -> Element(msg)` | `fn(model) -> Element(msg)` |
-| `update` | `fn(model, msg) -> model` | `fn(model, msg) -> Task(model)` |
-| Resultado de `run` | `Nil` | `Nil` |
-
-Ambos são tipos opacos: o programa os cria por `create` e inicia por `run`.
-`create` guarda as funções fornecidas, sem iniciar a aplicação.
-
-### 9.1. Inicialização
-
-No `SimpleApp`, o executor começa com `loop(app, app.init())`.
-No `App`, começa com:
+`SimpleApp` permanece igual. No `App`, init e update constroem descrições.
+O executor do ambiente obtém o modelo interpretando essas descrições.
 
 ```gleam
-loop(app, task.run(app.init()))
+app.create(init, view, update)
+|> app.run_with(fn(programa) {
+  fake.value(programa, respostas)
+})
 ```
 
-Primeiro `init` constrói a tarefa, depois o executor a executa e recebe o modelo
-inicial. A primeira visualização só ocorre após a conclusão dessa tarefa.
+O trecho pressupõe as funções e respostas definidas. `run_with` recebe a
+interpretação como parâmetro, separando a lógica da aplicação da configuração
+do ambiente. O próprio loop não contém código de GET ou gravação.
+`app.run` é um atalho que usa o fake da demonstração de download; para programas
+com outros pedidos, forneça respostas explícitas com `run_with`.
 
-### 9.2. Eventos e atualização
+Após interpretar init, o ambiente desenha a primeira view. Para cada evento
+válido, chama update, interpreta a descrição e recebe o novo modelo. A fila de
+eventos disponíveis é drenada antes da próxima renderização. Dois cliques podem
+produzir duas atualizações e apenas uma renderização com o modelo final.
 
-O loop transforma `view(model)` em HTML e um dicionário de handlers, exibe o
-HTML e espera eventos. Quando há eventos disponíveis, `drain`:
+A renderização e a leitura de eventos são responsabilidades do ambiente de UI
+e continuam sendo interações reais do host. O fake de tarefas não simula essa
+infraestrutura de UI; ele simula apenas os pedidos representados por Task.
+No CLI, o host imprime HTML e encerra o loop, sem janela interativa.
 
-1. Lê o próximo evento bruto do host.
-2. Decodifica o tipo de evento e seu identificador de handler.
-3. Procura o handler na interface renderizada.
-4. Aplica o evento ao handler para obter uma mensagem.
-5. Chama `update(model, mensagem)`.
-6. No `App`, executa a tarefa devolvida e usa o resultado como próximo modelo.
-7. Continua consumindo os eventos disponíveis.
+### Exemplos atualizados
 
-O trecho central do `App` é:
+- [Contador](../../examples/app_counter.gleam): três mensagens reconhecidas pelo
+  fake; nenhum println real. Incrementar e decrementar usam mensagens fixas.
+- [Notas](../../examples/app_notes.gleam): uma gravação exata conhecida; alterações
+  no caminho ou conteúdo demonstram pedido desconhecido, apresentado no modelo.
+- [HTTP](../../examples/app_http.gleam): uma URL de sucesso e uma URL de falha
+  conhecidas; nenhuma conexão é aberta.
+- [SimpleApp](../../examples/simple_counter.gleam): contador sem pedidos.
 
-```gleam
-Ok(task.run(app.update(model, message)))
+Veja o [guia dos exemplos](../../examples/README.md) para executar cada caso.
+
+## 8. Pureza e limites da garantia
+
+Os módulos task e task/fake não importam I/O, não usam FFI, não consultam o mundo
+externo e não mantêm estado mutável. Para continuações puras, a construção,
+composição e interpretação são puras: as mesmas entradas produzem os mesmos dados.
+Uma simulação repetida devolve o mesmo relatório sem repetir efeitos reais.
+
+Isso não transforma toda a linguagem Gleam em uma linguagem com verificação de
+efeitos. Um usuário ainda pode escrever uma continuação que chama diretamente
+`gleam/io`, `@external` ou outras APIs impuras. O fake avalia continuações e não
+é um sandbox contra esse código. A garantia desta biblioteca é a separação
+arquitetural e a ausência de I/O nas operações implementadas, sob o contrato de
+continuações puras. Uma garantia global exigiria restrições adicionais de linguagem.
+
+Task contém funções, então não se deve comparar tarefas estruturalmente para
+verificar equivalência. Compare o resultado e histórico de `fake.run`, que são
+dados. O tipo público permite construir interpretadores alternativos, mas nenhum
+executor real faz parte desta implementação.
+
+## 9. Migração da versão anterior
+
+- Remova chamadas a `task.run`: a função não existe mais.
+- Para demonstração, use `fake.run(tarefa, respostas)` e examine seu relatório.
+- Para App, forneça seu ambiente com `app.run_with` e fixtures explícitas.
+- Não trate Task como `fn() -> a`; use os construtores e funções do módulo.
+- Não espere arquivo, resposta HTTP real ou saída de println ao interpretar.
+- Mantenha o `use` em cada println encadeado; sua continuação continua obrigatória.
+- `done` agora constrói um dado `Done`, em vez de uma função retornando um valor.
+
+A implementação foi alterada somente no sgleam. O simplecode e sua cópia do
+engine não são sincronizados automaticamente por essas mudanças.
+
+## 10. Testes e arquivos
+
+[cli/tests/tasks.rs](../../cli/tests/tasks.rs) verifica o main nos dois modos de
+inteiros, os três caminhos de sucesso/erro, o histórico exato, a rejeição de
+pedidos desconhecidos, composição, repetibilidade e identificação nominal de Task.
+Um arquivo com conteúdo sentinela precisa permanecer intacto e nenhum `new.txt`
+pode surgir. A saída padrão dos casos de sucesso deve permanecer vazia.
+
+[engine/tests/task_app.rs](../../engine/tests/task_app.rs) fornece dois eventos
+em um host de UI simulado e verifica a evolução de 0 para 2 sem impressão das
+mensagens descritas pelas tarefas. A UI ainda deve renderizar o estado atualizado.
+
+```sh
+cargo test -p sgleam --test tasks
+cargo test -p engine --test task_app
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo clippy --target wasm32-wasip1 -p wasm -- -D warnings
+cargo fmt --all -- --check
 ```
-
-Eventos que não podem ser decodificados ou associados a um handler mantêm o
-modelo atual. Isso não constitui um tratamento genérico de falhas nas tarefas:
-um `panic` durante a execução não é convertido automaticamente em modelo.
-
-### 9.3. Renderização após o lote de eventos
-
-A renderização acontece depois que `drain` termina. Portanto, se dois eventos
-estiverem disponíveis, as duas atualizações podem ocorrer antes da próxima
-renderização. Elas usam os handlers da última interface renderizada.
-
-```text
-Executar init → modelo 0 → renderizar 0
-                              |
-                         dois eventos
-                              |
-                  executar update → modelo 1
-                              |
-                  executar update → modelo 2
-                              |
-                         renderizar 2
-```
-
-Os efeitos são sequenciais. Não há tarefas concorrentes, fila separada de
-comandos nem mensagens de conclusão assíncrona. Uma tarefa lenta bloqueia o
-avanço do loop enquanto executa.
-
-### 9.4. Exemplo de App com efeito na atualização
-
-```gleam
-import gleam/int
-import sgleam/task.{type Task}
-import sgleam/ui/app
-import sgleam/ui/button
-import sgleam/ui/element.{type Element}
-
-type Msg {
-  Incrementar
-}
-
-fn init() -> Task(Int) {
-  use _ <- task.println("Inicializando")
-  task.done(0)
-}
-
-fn update(model: Int, message: Msg) -> Task(Int) {
-  case message {
-    Incrementar -> {
-      use _ <- task.println("Incrementando")
-      task.done(model + 1)
-    }
-  }
-}
-
-fn view(model: Int) -> Element(Msg) {
-  button.new("Contador: " <> int.to_string(model))
-  |> button.on_press(Incrementar)
-  |> button.done
-}
-
-pub fn main() {
-  app.create(init, view, update)
-  |> app.run
-}
-```
-
-Esse exemplo utiliza o host de UI já existente. No host nativo, sem a integração
-de eventos de interface, o fallback mostra o HTML e encerra o loop; ele não
-abre uma janela interativa. A interação depende do host que fornece os eventos.
-
-
-### 9.5. Outros exemplos completos
-
-Há três programas adicionais em `examples/`:
-
-- [Contador](../../examples/app_counter.gleam): impressão na inicialização e nas atualizações.
-- [Bloco de notas](../../examples/app_notes.gleam): edição do modelo e gravação com tratamento de erro.
-- [Consulta HTTP](../../examples/app_http.gleam): GET e prévia textual da resposta.
-
-O [guia dos exemplos](../../examples/README.md) explica como verificar os programas
-e quais recursos estão disponíveis em cada host.
-
-## 10. Migração de aplicações existentes
-
-### 10.1. Manter inicialização e atualização diretas
-
-Troque:
-
-```gleam
-import sgleam/ui/app
-```
-
-por:
-
-```gleam
-import sgleam/ui/simple_app as app
-```
-
-Assim, chamadas `app.create(...)` e `app.run(...)` continuam com os mesmos nomes.
-Se o código importar ou anotar explicitamente o tipo `App`, será necessário
-ajustar a referência para `SimpleApp` também.
-
-### 10.2. Migrar para tarefas
-
-Mantenha `sgleam/ui/app`, importe `sgleam/task` e faça `init` e `update`
-retornarem tarefas. Uma transformação sem efeitos pode começar assim:
-
-```gleam
-fn init() -> Task(Int) {
-  task.done(0)
-}
-
-fn update(model: Int, _message: Nil) -> Task(Int) {
-  task.done(model + 1)
-}
-```
-
-Esse trecho pressupõe `import sgleam/task.{type Task}`. Depois, efeitos podem
-ser encadeados antes de `task.done(novo_modelo)`. A assinatura de `view` não muda.
-
-Não há adaptação automática de chamadas antigas a `app.create`: funções que
-retornam modelos diretamente precisam migrar ou utilizar `simple_app`.
-
-## 11. Arquivos envolvidos
-
-Os links abaixo são relativos a este documento.
 
 | Arquivo | Responsabilidade |
 | --- | --- |
-| [task.gleam](../../lib/sgleam/task.gleam) | Alias Task, composição e operações públicas |
-| [simple_app.gleam](../../lib/sgleam/ui/simple_app.gleam) | API anterior com modelos diretos |
-| [app.gleam](../../lib/sgleam/ui/app.gleam) | Execução de tarefas de init e update |
-| [sgleam_ffi.mjs](../../lib/sgleam/sgleam_ffi.mjs) | Execução de TaskMain e tradução dos resultados do host |
-| [run.rs](../../engine/src/run.rs) | Reconhecimento do tipo de retorno de main |
-| [engine.rs](../../engine/src/engine.rs) | Variante MainFunction::TaskMain |
-| [quickjs.rs](../../engine/src/quickjs.rs) | Registro das funções nativas e chamada do executor |
-| [host.rs](../../engine/src/host.rs) | Exportação das operações do host nativo |
-| [host/native.rs](../../engine/src/host/native.rs) | Implementação de HTTP e gravação |
-| [engine/Cargo.toml](../../engine/Cargo.toml) | Dependência reqwest para o alvo nativo |
-| [Cargo.lock](../../Cargo.lock) | Versões resolvidas das dependências |
-| [task_download.gleam](../../examples/task_download.gleam) | Programa completo do download |
-| [tasks.rs](../../cli/tests/tasks.rs) | Testes de ponta a ponta da CLI |
-| [task_app.rs](../../engine/tests/task_app.rs) | Teste da ordem de efeitos e renderização |
+| [task.gleam](../../lib/sgleam/task.gleam) | Descrições e composição |
+| [task/fake.gleam](../../lib/sgleam/task/fake.gleam) | Respostas predefinidas, interpretação e histórico |
+| [ui/app.gleam](../../lib/sgleam/ui/app.gleam) | Loop parametrizado pelo interpretador do ambiente |
+| [run.rs](../../engine/src/run.rs) | Reconhecimento nominal de Task(Int) |
+| [engine.rs](../../engine/src/engine.rs) | Identificação TaskMain |
+| [sgleam_ffi.mjs](../../lib/sgleam/sgleam_ffi.mjs) | Seleção do fake pelo ambiente de execução |
 
-## 12. Testes e reprodução da validação
+Possíveis evoluções incluem um executor real separado, fixtures consumidas em
+ordem, erros mais estruturados e execução assíncrona. Nenhuma dessas evoluções
+é necessária para a demonstração pura atual e nenhuma foi implementada aqui.
 
-### 12.1. CLI
+## Parar a aplicação com stop_when
 
-`cli/tests/tasks.rs` cobre:
+`simple_app.stop_when` e `app.stop_when` recebem `fn(model) -> Bool`.
+Sem essa configuração, o comportamento anterior é preservado.
 
-- Execução automática do main de download, com servidor HTTP local e diretório
-  temporário, nos modos padrão de inteiros e `-n`.
-- Conferência da mensagem de sucesso e do conteúdo gravado.
-- Resposta HTTP 404, que seleciona o ramo de erro de GET.
-- Gravação em diretório inexistente, que seleciona o ramo de erro de arquivo.
-- Construção de uma tarefa de gravação que nunca é executada: o arquivo não surge.
-- Execução repetida de uma tarefa de impressão, verificando ordem e resultado 42.
-- Tratamento de uma URL com esquema inválido.
-- Compilação e inicialização de SimpleApp e App.
-
-### 12.2. Loop do App
-
-`engine/tests/task_app.rs` compila um programa Gleam e fornece um host simulado
-em JavaScript. O host envia dois eventos de clique. O teste verifica a ordem:
-
-```text
-impressão de init
-renderização do modelo 0
-impressão da primeira atualização
-impressão da segunda atualização
-renderização do modelo 2
+```gleam
+simple_app.create(init, view, update)
+|> simple_app.stop_when(fn(model) { model.count >= 5 })
+|> simple_app.run
 ```
 
-Esse teste verifica a execução real do código compilado em QuickJS. Não é um
-teste de interação com um navegador ou do servidor simplecode.
-
-### 12.3. Comandos
-
-Execute na raiz do repositório:
-
-```sh
-# Testes específicos desta implementação
-cargo test -p sgleam --test tasks
-cargo test -p engine --test task_app
-
-# Suíte Rust padrão
-cargo test
-
-# Análise estática nativa e do alvo WASM
-cargo clippy --all-targets -- -D warnings
-cargo clippy --target wasm32-wasip1 -p wasm -- -D warnings
-
-# Formatação
-cargo fmt --all -- --check
-cargo run -- format --check lib/sgleam/task.gleam lib/sgleam/ui/app.gleam lib/sgleam/ui/simple_app.gleam examples/task_download.gleam
-deno fmt --check lib/sgleam/sgleam_ffi.mjs
-```
-
-A checagem WASM requer o alvo `wasm32-wasip1` instalado. A checagem JavaScript
-requer Deno. Na validação inicial desta implementação, a suíte Rust padrão
-registrou 273 testes aprovados e 136 ignorados; os comandos de Clippy nativo,
-Clippy WASM e formatação também passaram. Essa contagem é um registro daquela
-execução, não uma garantia para versões futuras do projeto. Não foi realizada
-uma execução interativa no navegador como parte dessa validação.
-
-## 13. Limitações e possíveis evoluções
-
-| Comportamento atual | Consequência |
-| --- | --- |
-| Task é um alias de função | Não há distinção nominal ou garantia de pureza |
-| Execução síncrona | I/O bloqueia a tarefa e o loop de UI |
-| Sem memoização | Executar novamente repete os efeitos |
-| Sem agendador ou cancelamento próprio | Task não gerencia concorrência nem interrupção de I/O |
-| HTTP e arquivos apenas no host nativo | Esses efeitos retornam Error no WASM atual |
-| TaskMain reconhece fn() -> Int | Outros retornos exigem run explícito |
-| Resultado inteiro não define exit status | done(1) não equivale a encerrar o processo com erro |
-| Erros de I/O representados por String | Não há categorias tipadas de erro nessa API |
-| Sem captura geral de exceções em run | Panic e falhas inesperadas seguem o tratamento existente |
-| Composição por chamadas de função | Não há trampoline nem garantia de pilha constante para cadeias arbitrariamente longas |
-| API de App alterada | Consumidores precisam migrar ou usar SimpleApp |
-
-Evoluções possíveis incluem implementar efeitos no host do navegador, definir
-uma política para códigos de saída, introduzir erros estruturados e estudar uma
-execução assíncrona com mensagens de conclusão. Essas possibilidades não estão
-implementadas nesta versão e podem exigir mudanças na API e no host.
+O predicado deve ser puro. Ele é verificado no estado inicial e após cada
+atualização, inclusive entre eventos do mesmo lote. Quando retorna True,
+a view final é renderizada e run retorna Nil, sem esperar ou consumir outro
+evento. A aplicação não fecha a aba nem o processo. A view final permanece;
+se quiser mostrar botões desabilitados, faça isso em view, como no exemplo
+`examples/simple_stop_when.gleam`. A condição não interrompe uma atualização
+ou interpretação já em andamento. Um stop_when posterior substitui o anterior.
+No App, a mesma opção funciona com run e run_with.

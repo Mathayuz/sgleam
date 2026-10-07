@@ -5,13 +5,14 @@ use engine::{
 };
 
 #[test]
-fn app_runs_initialization_and_each_update_before_rendering() {
+fn app_interprets_descriptions_without_printing_and_renders_updated_model() {
     let mut project = Project::default();
     project.write_source(
         "task_app.gleam",
         r#"
 import gleam/int
 import sgleam/task
+import sgleam/task/fake
 import sgleam/ui/app
 import sgleam/ui/button
 @external(javascript, "./mock.mjs", "setup")
@@ -28,7 +29,9 @@ pub fn main() {
   }, fn(model, _) {
     use _ <- task.println("update")
     task.done(model + 1)
-  }) |> app.run
+  }) |> app.run_with(fn(program) {
+    fake.value(program, [fake.PrintlnResponse("init"), fake.PrintlnResponse("update")])
+  })
   verify()
 }
 "#,
@@ -50,9 +53,8 @@ export function setup() {
     sgleam.next_event = () => events.shift() ?? "";
 }
 export function verify() {
-    if (log.length !== 5 || log[0] !== "init" ||
-        !log[1].includes(">0</button>") || log[2] !== "update" ||
-        log[3] !== "update" || !log[4].includes(">2</button>")) {
+    if (log.length !== 2 || !log[0].includes(">0</button>") ||
+        !log[1].includes(">2</button>")) {
         throw new Error("Wrong effect/render order: " + JSON.stringify(log));
     }
 }
@@ -62,4 +64,79 @@ export function verify() {
         .expect("create runtime")
         .run_main("task_app", MainFunction::Main)
         .expect("run and verify task app");
+}
+
+#[test]
+fn stop_when_checks_initial_and_updated_models_without_draining_extra_events() {
+    for effectful in [false, true] {
+        for initial in [0, 1] {
+            let module = if effectful { "app" } else { "simple_app" };
+            let init = if effectful {
+                format!("task.done({initial})")
+            } else {
+                initial.to_string()
+            };
+            let update = if effectful {
+                "task.done(n + 1)"
+            } else {
+                "n + 1"
+            };
+            let imports = if effectful { "import sgleam/task" } else { "" };
+            let mut project = Project::default();
+            project.write_source(
+                "stop_app.gleam",
+                &format!(
+                    r#"
+import gleam/int
+import sgleam/ui/{module} as app
+import sgleam/ui/button
+{imports}
+@external(javascript, "./stop_mock.mjs", "setup")
+fn setup() -> Nil
+@external(javascript, "./stop_mock.mjs", "verify")
+fn verify() -> Nil
+pub fn main() {{
+  setup()
+  app.create(fn() {{ {init} }}, fn(n) {{
+    button.new(int.to_string(n)) |> button.on_press(Nil) |> button.done
+  }}, fn(n, _) {{ {update} }})
+  |> app.stop_when(fn(n) {{ n >= 1 }})
+  |> app.run
+  verify()
+}}
+"#
+                ),
+            );
+            project.compile(false).expect("compile stop_when example");
+            project.write_out(
+                "stop_mock.mjs",
+                &format!(
+                    r#"
+let views = [], reads = 0, waits = 0;
+export function setup() {{
+  sgleam.draw_view = html => views.push(html);
+  sgleam.wait_event = () => {{
+    if (++waits > 1 || {initial} === 1) throw new Error("Waited after stopping");
+    return 1;
+  }};
+  sgleam.next_event = () => {{
+    if (++reads > 1) throw new Error("Consumed another queued event after stopping");
+    return JSON.stringify({{kind: "ui", h: 0, e: "click"}});
+  }};
+}}
+export function verify() {{
+  if (views.length !== 2 - {initial} || reads !== 1 - {initial} ||
+      !views[views.length - 1].includes(">1</button>")) {{
+    throw new Error("Wrong final view or event count");
+  }}
+}}
+"#
+                ),
+            );
+            QuickJsEngine::new(project.fs)
+                .expect("runtime")
+                .run_main("stop_app", MainFunction::Main)
+                .expect("stops and returns");
+        }
+    }
 }

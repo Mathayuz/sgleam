@@ -1,0 +1,220 @@
+// Galeria de todos os componentes de sgleam/ui, sem tarefas ou I/O no modelo.
+// No playground, carregue o arquivo e execute main() no REPL.
+import gleam/int
+import sgleam/ui/button
+import sgleam/ui/checkbox
+import sgleam/ui/element.{type Element}
+import sgleam/ui/layout
+import sgleam/ui/link
+import sgleam/ui/picker
+import sgleam/ui/radio
+import sgleam/ui/simple_app
+import sgleam/ui/text
+import sgleam/ui/text_area
+import sgleam/ui/text_input
+
+type Model {
+  Model(
+    clicks: Int,
+    name: String,
+    notes: String,
+    checked: Bool,
+    size: String,
+    color: String,
+    last_event: String,
+  )
+}
+
+type Msg {
+  Click
+  Reset
+  NameChanged(String)
+  NameSubmitted(String)
+  NotesChanged(String)
+  Checked(Bool)
+  SizeSelected(String)
+  ColorSelected(String)
+  LinkPressed
+}
+
+fn init() -> Model {
+  Model(0, "", "", False, "medio", "azul", "Nenhuma interação ainda.")
+}
+
+fn update(model: Model, message: Msg) -> Model {
+  case message {
+    Click ->
+      Model(..model, clicks: model.clicks + 1, last_event: "Botão clicado.")
+    Reset -> init()
+    NameChanged(name) -> Model(..model, name:, last_event: "Texto editado.")
+    NameSubmitted(name) ->
+      Model(..model, name:, last_event: "Enter enviado: " <> name)
+    NotesChanged(notes) ->
+      Model(..model, notes:, last_event: "Área de texto editada.")
+    Checked(checked) ->
+      Model(..model, checked:, last_event: "Checkbox alterado.")
+    SizeSelected(size) ->
+      Model(..model, size:, last_event: "Radio selecionado: " <> size)
+    ColorSelected(color) ->
+      Model(..model, color:, last_event: "Picker selecionado: " <> color)
+    LinkPressed -> Model(..model, last_event: "Link com evento clicado.")
+  }
+}
+
+fn label(value: String) -> Element(Msg) {
+  text.new(value) |> text.done
+}
+
+fn section(title: String, children: List(Element(Msg))) -> Element(Msg) {
+  layout.column([label(title), ..children]) |> layout.done
+}
+
+fn size_option(model: Model, value: String, title: String) -> Element(Msg) {
+  layout.row([
+    radio.new("gallery-size", value, model.size == value)
+      |> radio.on_select(SizeSelected(value))
+      |> radio.done,
+    label(title),
+  ])
+  |> layout.done
+}
+
+fn colors() -> List(element.Choice) {
+  [
+    picker.choice("Azul", "azul"),
+    picker.choice("Verde", "verde"),
+    picker.choice("Vermelho — opção com texto maior", "vermelho"),
+  ]
+}
+
+fn view(model: Model) -> Element(Msg) {
+  layout.column([
+    label("GALERIA DE COMPONENTES — SimpleApp"),
+    label(
+      "Teste tamanhos, alinhamento, foco, digitação e estados desabilitados.",
+    ),
+    section("1. Text", [
+      label("Texto curto"),
+      label(
+        "Texto mais longo para observar quebra de linha quando a área do playground fica estreita. Acentos: ação, coração, café.",
+      ),
+      label("Caracteres literais: <tag> & aspas \"exemplo\""),
+    ]),
+    section("2. Button — compare a largura com o texto", [
+      layout.row([
+        button.new("OK") |> button.on_press(Click) |> button.done,
+        button.new("Botão com texto mais comprido")
+          |> button.on_press(Click)
+          |> button.done,
+        button.new("Desabilitado")
+          |> button.on_press(Click)
+          |> button.enabled(False)
+          |> button.done,
+      ])
+        |> layout.done,
+      label("Cliques: " <> int.to_string(model.clicks)),
+      // Fora de uma row, permite comparar o comportamento dentro de column.
+      button.new("Botão em coluna") |> button.on_press(Click) |> button.done,
+    ]),
+    section("3. TextInput", [
+      label("Nome (pressione Enter para testar on_submit):"),
+      text_input.new(model.name)
+        |> text_input.placeholder("Digite seu nome")
+        |> text_input.on_input(NameChanged)
+        |> text_input.on_submit(NameSubmitted)
+        |> text_input.done,
+      text_input.new("Entrada desabilitada")
+        |> text_input.enabled(False)
+        |> text_input.done,
+      label("Valor: " <> model.name),
+    ]),
+    section("4. TextArea", [
+      label("Observações (quatro linhas):"),
+      text_area.new(model.notes)
+        |> text_area.placeholder("Digite várias linhas...")
+        |> text_area.rows(4)
+        |> text_area.on_input(NotesChanged)
+        |> text_area.done,
+      text_area.new("Área desabilitada")
+        |> text_area.rows(2)
+        |> text_area.enabled(False)
+        |> text_area.done,
+    ]),
+    section("5. Checkbox", [
+      layout.row([
+        checkbox.new(model.checked)
+          |> checkbox.on_change(Checked)
+          |> checkbox.done,
+        label("Opção interativa"),
+        checkbox.new(True) |> checkbox.enabled(False) |> checkbox.done,
+        label("Marcado e desabilitado"),
+        checkbox.new(False) |> checkbox.enabled(False) |> checkbox.done,
+        label("Desmarcado e desabilitado"),
+      ])
+        |> layout.done,
+      label(case model.checked {
+        True -> "Estado: marcado"
+        False -> "Estado: desmarcado"
+      }),
+    ]),
+    section("6. Radio — um grupo com três opções", [
+      layout.row([
+        size_option(model, "pequeno", "Pequeno"),
+        size_option(model, "medio", "Médio"),
+        size_option(model, "grande", "Grande"),
+        radio.new("gallery-disabled", "fixo", True)
+          |> radio.enabled(False)
+          |> radio.done,
+        label("Radio desabilitado"),
+      ])
+        |> layout.done,
+      label("Selecionado: " <> model.size),
+    ]),
+    section("7. Picker (seleção)", [
+      // A row ocupa a largura da coluna, mas o picker mantém sua largura natural.
+      layout.row([
+        picker.new(colors())
+        |> picker.selected(model.color)
+        |> picker.on_select(ColorSelected)
+        |> picker.done,
+      ])
+        |> layout.done,
+      layout.row([
+        picker.new(colors())
+        |> picker.selected("verde")
+        |> picker.enabled(False)
+        |> picker.done,
+      ])
+        |> layout.done,
+      label("Cor selecionada: " <> model.color),
+    ]),
+    section("8. Link", [
+      link.new("Link com evento (veja o status abaixo)", "#gallery")
+        |> link.on_press(LinkPressed)
+        |> link.done,
+      link.new("Site do Gleam — nova aba", "https://gleam.run")
+        |> link.new_tab(True)
+        |> link.done,
+    ]),
+    section("9. Layout — linhas e colunas aninhadas", [
+      layout.row([
+        layout.column([label("Coluna A"), label("A1"), label("A2")])
+          |> layout.done,
+        layout.column([label("Coluna B"), label("B1"), label("B2")])
+          |> layout.done,
+      ])
+      |> layout.done,
+    ]),
+    section("Status", [
+      label(model.last_event),
+      button.new("Restaurar valores iniciais")
+        |> button.on_press(Reset)
+        |> button.done,
+    ]),
+  ])
+  |> layout.done
+}
+
+pub fn main() {
+  simple_app.create(init, view, update) |> simple_app.run
+}

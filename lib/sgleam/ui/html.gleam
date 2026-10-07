@@ -173,6 +173,10 @@ fn render_element(
           <> "<a href=\""
           <> escape(uri)
           <> "\""
+          <> case element.link_opens_new_tab(repr) {
+          True -> " target=\"_blank\" rel=\"noopener noreferrer\""
+          False -> ""
+        }
           <> event_attr
           <> ">"
           <> escape(label)
@@ -202,7 +206,12 @@ fn render_text_tag(
   )
 }
 
-fn render_picker(repr, level: Int, next: Int, handlers: Dict(Int, Handler(msg))) {
+fn render_picker(
+  repr,
+  level: Int,
+  next: Int,
+  handlers: Dict(Int, Handler(msg)),
+) {
   let #(choices, selected, on_select, enabled) = element.picker_data(repr)
 
   let #(event_attr, handlers, after) =
@@ -228,7 +237,11 @@ fn render_picker(repr, level: Int, next: Int, handlers: Dict(Int, Handler(msg)))
   )
 }
 
-fn render_choice(choice: Choice, selected: Option(String), level: Int) -> String {
+fn render_choice(
+  choice: Choice,
+  selected: Option(String),
+  level: Int,
+) -> String {
   let #(label, value) = element.choice_data(choice)
 
   let is_selected = case selected {

@@ -38,7 +38,7 @@ pub const SGLEAM_FFI: &str = "./sgleam/sgleam_ffi.mjs";
 #[derive(Debug, Clone, PartialEq)]
 pub enum MainFunction {
     Main,
-    /// A main returning fn() -> Int (Task(Int)).
+    /// A main returning the request description sgleam/task.Task(Int).
     TaskMain,
     /// The repl's entry point, and the new files it wrote.
     ReplMain {

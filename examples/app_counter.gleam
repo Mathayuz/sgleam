@@ -1,6 +1,7 @@
-// Efeitos na inicialização e nas atualizações; reset sem efeito.
+// Pedidos de impressão simulados: nenhum texto é impresso pelo fake.
 import gleam/int
 import sgleam/task.{type Task}
+import sgleam/task/fake
 import sgleam/ui/app
 import sgleam/ui/button
 import sgleam/ui/element.{type Element}
@@ -29,7 +30,11 @@ fn update(model: Int, message: Msg) -> Task(Int) {
 // Uma tarefa pode ser reutilizada para compor diferentes atualizações.
 fn change(model: Int, amount: Int) -> Task(Int) {
   let next = model + amount
-  use _ <- task.println("Novo valor: " <> int.to_string(next))
+  let message = case amount {
+    1 -> "Incrementando"
+    _ -> "Decrementando"
+  }
+  use _ <- task.println(message)
   task.done(next)
 }
 
@@ -47,5 +52,12 @@ fn view(model: Int) -> Element(Msg) {
 }
 
 pub fn main() {
-  app.create(init, view, update) |> app.run
+  app.create(init, view, update)
+  |> app.run_with(fn(program) {
+    fake.value(program, [
+      fake.PrintlnResponse("Contador iniciado"),
+      fake.PrintlnResponse("Incrementando"),
+      fake.PrintlnResponse("Decrementando"),
+    ])
+  })
 }
