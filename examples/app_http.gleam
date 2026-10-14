@@ -1,4 +1,5 @@
 // Consulta simulada por respostas predefinidas, sem rede.
+import gleam/int
 import gleam/string
 import sgleam/task.{type Task}
 import sgleam/task/fake
@@ -16,32 +17,48 @@ type Model {
 type Msg {
   ChangeUrl(String)
   Fetch
+  SimulationError(String)
+  GotResponse(Result(String, task.HttpError))
 }
 
-fn init() -> Task(Model) {
-  task.done(Model("https://malbarbo.pro.br", "", "Informe uma URL e consulte."))
+fn init() -> #(Model, Task(Msg)) {
+  #(
+    Model("https://malbarbo.pro.br", "", "Carregando..."),
+    fetch("https://malbarbo.pro.br"),
+  )
 }
 
-fn update(model: Model, message: Msg) -> Task(Model) {
+fn fetch(url: String) -> Task(Msg) {
+  use response <- task.get(url)
+  task.done(GotResponse(response))
+}
+
+fn update(model: Model, message: Msg) -> #(Model, Task(Msg)) {
   case message {
-    ChangeUrl(url) -> task.done(Model(url, "", "URL alterada."))
-    Fetch -> {
-      use response <- task.get(model.url)
-      case response {
-        Ok(body) -> {
-          task.done(
-            Model(
-              ..model,
-              preview: string.slice(body, 0, 500),
-              status: "Resposta simulada. Exibindo até 500 caracteres.",
-            ),
-          )
-        }
-        Error(reason) -> {
-          task.done(Model(..model, preview: "", status: "Erro: " <> reason))
-        }
-      }
-    }
+    ChangeUrl(url) -> #(Model(url, "", "URL alterada."), task.none())
+    Fetch -> #(Model(..model, status: "Carregando..."), fetch(model.url))
+    SimulationError(reason) -> #(Model(..model, status: reason), task.none())
+    GotResponse(Ok(body)) -> #(
+      Model(
+        ..model,
+        preview: string.slice(body, 0, 500),
+        status: "Resposta simulada. Exibindo até 500 caracteres.",
+      ),
+      task.none(),
+    )
+    GotResponse(Error(reason)) -> #(
+      Model(..model, preview: "", status: "Erro: " <> error_text(reason)),
+      task.none(),
+    )
+  }
+}
+
+fn error_text(error: task.HttpError) -> String {
+  case error {
+    task.BadUrl(url) -> "URL inválida: " <> url
+    task.Timeout -> "Tempo de espera esgotado"
+    task.NetworkError -> "Falha de rede simulada"
+    task.BadStatus(status) -> "Status HTTP: " <> int.to_string(status)
   }
 }
 
@@ -64,18 +81,19 @@ pub fn main() {
   app.create(init, view, update)
   |> app.run_with(fn(program) {
     let report =
-      fake.run(program, [
+      fake.run_messages(program, [
         fake.GetResponse(
           "https://malbarbo.pro.br",
           Ok("Conteúdo predefinido do fake."),
         ),
-        fake.GetResponse("https://erro.exemplo", Error("Falha simulada")),
+        fake.GetResponse("https://erro.exemplo", Error(task.NetworkError)),
       ])
     case report.result {
-      Ok(model) -> model
-      Error(fake.UnexpectedRequest(fake.Get(url))) ->
-        Model(url, "", "URL desconhecida no fake.")
-      Error(_) -> Model("", "", "Pedido desconhecido no fake.")
+      Ok(messages) -> messages
+      Error(fake.UnexpectedRequest(fake.Get(url))) -> [
+        SimulationError("URL desconhecida no fake: " <> url),
+      ]
+      Error(_) -> [SimulationError("Pedido desconhecido no fake.")]
     }
   })
 }

@@ -1,5 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic/decode.{type Decoder}
+import gleam/list
 import gleam/result
 
 import sgleam/system
@@ -9,31 +10,27 @@ import sgleam/ui/element.{type Element}
 import sgleam/ui/event.{type Event, type Handler}
 import sgleam/ui/html
 
-/// Defines an MVU application.
-/// `init` creates a task producing the initial model.
-/// `view` describes the interface for a model.
-/// `update` creates a task producing a new model from a message.
-/// The environment interprets descriptions before rendering the next view.
+/// Pure init/update return the current model and a task producing messages.
+/// The environment renders the model, interprets the task, and routes each
+/// returned message through update. The default interpreter is synchronous.
 pub opaque type App(model, msg) {
   App(
-    init: fn() -> Task(model),
+    init: fn() -> #(model, Task(msg)),
     view: fn(model) -> Element(msg),
-    update: fn(model, msg) -> Task(model),
+    update: fn(model, msg) -> #(model, Task(msg)),
     should_stop: fn(model) -> Bool,
   )
 }
 
-/// Creates an application.
 pub fn create(
-  init: fn() -> Task(model),
+  init: fn() -> #(model, Task(msg)),
   view: fn(model) -> Element(msg),
-  update: fn(model, msg) -> Task(model),
+  update: fn(model, msg) -> #(model, Task(msg)),
 ) -> App(model, msg) {
   App(init:, view:, update:, should_stop: fn(_) { False })
 }
 
-/// Stops after rendering a model for which the predicate returns True.
-/// Checked at initialization and after each update, before consuming more events.
+/// Renders the final model and stops before its task or queued messages/events.
 pub fn stop_when(
   app: App(model, msg),
   predicate: fn(model) -> Bool,
@@ -41,74 +38,68 @@ pub fn stop_when(
   App(..app, should_stop: predicate)
 }
 
-/// Starts the application and runs its event loop.
 pub fn run(app: App(model, msg)) -> Nil {
-  run_with(app, fake.demo_value)
+  run_with(app, fake.demo_messages)
 }
 
-/// Supplies the environment interpreter; the default is the download demo fake.
+/// Supplies a synchronous interpreter returning messages, never a model.
+/// none() produces no messages; done(message) produces one.
 pub fn run_with(
   app: App(model, msg),
-  execute: fn(Task(model)) -> model,
+  execute: fn(Task(msg)) -> List(msg),
 ) -> Nil {
-  loop(app, execute(app.init()), execute)
+  loop(app, app.init(), [], execute)
 }
 
 fn loop(
   app: App(model, msg),
-  model: model,
-  execute: fn(Task(model)) -> model,
+  state: #(model, Task(msg)),
+  pending: List(msg),
+  execute: fn(Task(msg)) -> List(msg),
 ) -> Nil {
-  let #(html, handlers) =
-    app.view(model)
-    |> html.render
-
-  system.show_view(html)
+  let #(model, task) = state
+  let #(markup, handlers) = app.view(model) |> html.render
+  system.show_view(markup)
 
   case app.should_stop(model) {
     True -> Nil
-    False ->
-      case system.wait_event(-1) {
-        system.HasEvent ->
-          loop(app, drain(app, handlers, model, execute), execute)
-
-        system.Timeout -> loop(app, model, execute)
-
-        system.Stopped -> Nil
+    False -> {
+      let messages = list.append(pending, execute(task))
+      case messages {
+        [message, ..rest] ->
+          loop(app, app.update(model, message), rest, execute)
+        [] -> await_event(app, handlers, model, execute)
       }
+    }
   }
 }
 
-fn drain(
+fn await_event(
   app: App(model, msg),
   handlers: Dict(Int, Handler(msg)),
   model: model,
-  execute: fn(Task(model)) -> model,
-) -> model {
-  case app.should_stop(model) {
-    True -> model
-    False ->
-      case system.next_event() {
-        Error(_) -> model
-
-        Ok(raw) -> {
-          let next_model = {
-            use incoming <- result.try(
-              decode.run(raw, incoming_decoder())
-              |> result.replace_error(Nil),
-            )
-
-            let Ui(handler: handler_id, event: incoming_event) = incoming
-
-            use handler <- result.try(dict.get(handlers, handler_id))
-
-            use message <- result.try(event.apply(handler, incoming_event))
-
-            Ok(execute(app.update(model, message)))
-          }
-
-          drain(app, handlers, result.unwrap(next_model, model), execute)
-        }
+  execute: fn(Task(msg)) -> List(msg),
+) -> Nil {
+  case system.next_event() {
+    Ok(raw) -> {
+      let decoded = {
+        use incoming <- result.try(
+          decode.run(raw, incoming_decoder()) |> result.replace_error(Nil),
+        )
+        let Ui(handler: handler_id, event: incoming_event) = incoming
+        use handler <- result.try(dict.get(handlers, handler_id))
+        event.apply(handler, incoming_event)
+      }
+      case decoded {
+        Ok(message) -> loop(app, app.update(model, message), [], execute)
+        Error(_) -> await_event(app, handlers, model, execute)
+      }
+    }
+    Error(_) ->
+      case system.wait_event(-1) {
+        system.Stopped -> Nil
+        system.HasEvent | system.Timeout ->
+          await_event(app, handlers, model, execute)
       }
   }
 }

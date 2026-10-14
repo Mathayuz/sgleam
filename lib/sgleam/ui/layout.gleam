@@ -4,6 +4,7 @@ pub fn row(children: List(Element(msg))) -> LayoutRepr(msg) {
   element.new_row(children)
 }
 
+/// Stacks children vertically, aligned to the start at their natural width.
 pub fn column(children: List(Element(msg))) -> LayoutRepr(msg) {
   element.new_column(children)
 }

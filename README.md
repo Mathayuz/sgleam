@@ -113,15 +113,22 @@ Both work best in the web version, which shows the picture as you go. The
 
 ## Tasks and UI applications
 
-`sgleam/task` builds pure request descriptions and continuations. It does not
-perform HTTP, file writes or printing. The separate `sgleam/task/fake` interpreter
-returns predefined responses and an ordered request history without I/O.
-A `main` returning `Task(Int)` is interpreted with the fixed download-demo fixtures.
-See [the program](examples/task_download.gleam) and
-[its simulation report](examples/task_fake.gleam).
+`sgleam/task` describes web effects: GET, POST and a one-shot `wake_up` in
+milliseconds. GET and POST share `HttpError` (`BadUrl`, `Timeout`, `NetworkError`,
+`BadStatus`) and return response text. POST carries a body and its content type.
+The module performs no I/O; file writes and printing are no longer task effects.
+
+The separate `sgleam/task/fake` interpreter answers exact requests from predefined
+fixtures and returns an ordered history. It never sends HTTP or waits real time.
+A `main` returning `Task(Int)` uses the fixed [web demo](examples/task_web.gleam)
+fixtures. [task_fake](examples/task_fake.gleam) checks the simulation contracts.
 
 `sgleam/ui/simple_app` uses direct model updates. `sgleam/ui/app` uses
-`Task(model)` descriptions; `app.run_with` supplies the environment interpreter.
+`#(model, Task(msg))`: the model is rendered before interpretation, and returned
+messages pass through update. `task.none()` produces no message. `app.run_with`
+accepts a synchronous interpreter returning `List(msg)`.
+
+The UI scope is web; there is no native desktop renderer or real task executor.
 See [the examples](examples/README.md) and
 [the implementation guide (Portuguese)](docs/pt-br/tasks.md).
 

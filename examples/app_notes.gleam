@@ -1,4 +1,5 @@
-// Simulação pura: apenas anotacoes.txt com o conteúdo inicial é conhecido.
+// Envio de anotação por POST simulado; nenhum pedido de rede é realizado.
+import gleam/int
 import sgleam/task.{type Task}
 import sgleam/task/fake
 import sgleam/ui/app
@@ -10,53 +11,80 @@ import sgleam/ui/text_area
 import sgleam/ui/text_input
 
 type Model {
-  Model(path: String, content: String, status: String)
+  Model(url: String, content: String, status: String)
 }
 
 type Msg {
-  ChangePath(String)
+  ChangeUrl(String)
   Edit(String)
   Save
+  SimulationError(String)
+  Saved(url: String, result: Result(String, task.HttpError))
 }
 
-fn init() -> Task(Model) {
-  task.done(Model(
-    "anotacoes.txt",
-    "Minha anotação",
-    "Simulação: nenhum arquivo será criado.",
-  ))
+fn init() -> #(Model, Task(Msg)) {
+  #(
+    Model(
+      "https://example.com/notes",
+      "Minha anotação",
+      "Simulação: nenhum POST será enviado.",
+    ),
+    task.none(),
+  )
 }
 
-fn update(model: Model, message: Msg) -> Task(Model) {
+fn save(url: String, content: String) -> Task(Msg) {
+  use result <- task.post(url, task.string_body("text/plain", content))
+  task.done(Saved(url, result))
+}
+
+fn update(model: Model, message: Msg) -> #(Model, Task(Msg)) {
   case message {
-    ChangePath(path) ->
-      task.done(Model(..model, path:, status: "Destino alterado."))
-    Edit(content) ->
-      task.done(Model(..model, content:, status: "Alterações não salvas."))
-    Save -> {
-      use result <- task.write_file(model.path, model.content)
+    ChangeUrl(url) -> #(
+      Model(..model, url:, status: "Destino alterado."),
+      task.none(),
+    )
+    Edit(content) -> #(
+      Model(..model, content:, status: "Alterações não salvas."),
+      task.none(),
+    )
+    Save -> #(
+      Model(..model, status: "Enviando..."),
+      save(model.url, model.content),
+    )
+    SimulationError(reason) -> #(Model(..model, status: reason), task.none())
+    Saved(url, result) -> {
       let status = case result {
-        Ok(_) -> "Gravação simulada em " <> model.path
-        Error(reason) -> "Não foi possível salvar: " <> reason
+        Ok(_) -> "Envio simulado para " <> url
+        Error(reason) -> error_text(reason)
       }
-      task.done(Model(..model, status:))
+      #(Model(..model, status:), task.none())
     }
+  }
+}
+
+fn error_text(error: task.HttpError) -> String {
+  case error {
+    task.BadUrl(url) -> "URL inválida: " <> url
+    task.Timeout -> "Tempo de espera esgotado"
+    task.NetworkError -> "Falha de rede"
+    task.BadStatus(status) -> "Status HTTP: " <> int.to_string(status)
   }
 }
 
 fn view(model: Model) -> Element(Msg) {
   layout.column([
     text.new("Bloco de notas") |> text.done,
-    text_input.new(model.path)
-      |> text_input.placeholder("Caminho do arquivo")
-      |> text_input.on_input(ChangePath)
+    text_input.new(model.url)
+      |> text_input.placeholder("URL de destino")
+      |> text_input.on_input(ChangeUrl)
       |> text_input.done,
     text_area.new(model.content)
       |> text_area.rows(8)
       |> text_area.placeholder("Digite sua anotação")
       |> text_area.on_input(Edit)
       |> text_area.done,
-    button.new("Salvar") |> button.on_press(Save) |> button.done,
+    button.new("Enviar") |> button.on_press(Save) |> button.done,
     text.new(model.status) |> text.done,
   ])
   |> layout.done
@@ -66,18 +94,25 @@ pub fn main() {
   app.create(init, view, update)
   |> app.run_with(fn(program) {
     let report =
-      fake.run(program, [
-        fake.WriteFileResponse("anotacoes.txt", "Minha anotação", Ok(Nil)),
+      fake.run_messages(program, [
+        fake.PostResponse(
+          "https://example.com/notes",
+          task.string_body("text/plain", "Minha anotação"),
+          fake.http_response(201, "recebido"),
+        ),
+        fake.PostResponse(
+          "https://example.com/notes",
+          task.string_body("text/plain", "erro"),
+          fake.http_response(500, "falha"),
+        ),
       ])
     case report.result {
-      Ok(model) -> model
-      Error(fake.UnexpectedRequest(fake.WriteFile(path, content))) ->
-        Model(
-          path,
-          content,
-          "Pedido desconhecido: use anotacoes.txt e Minha anotação.",
-        )
-      Error(_) -> Model("", "", "Pedido desconhecido no fake.")
+      Ok(messages) -> messages
+      Error(_) -> [
+        SimulationError(
+          "Pedido desconhecido: use a URL inicial e Minha anotação ou erro.",
+        ),
+      ]
     }
   })
 }

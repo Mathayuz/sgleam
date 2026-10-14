@@ -19,18 +19,34 @@ import sgleam/ui/button
 fn setup() -> Nil
 @external(javascript, "./mock.mjs", "verify")
 fn verify() -> Nil
+@external(javascript, "./mock.mjs", "before_execute")
+fn before_execute() -> Nil
+type Msg { Initialized Click Completed }
 pub fn main() {
   setup()
   app.create(fn() {
-    use _ <- task.println("init")
-    task.done(0)
+    let command = {
+      use _ <- task.wake_up(0)
+      task.done(Initialized)
+    }
+    #(10, command)
   }, fn(model) {
-    button.new(int.to_string(model)) |> button.on_press(Nil) |> button.done
-  }, fn(model, _) {
-    use _ <- task.println("update")
-    task.done(model + 1)
+    button.new(int.to_string(model)) |> button.on_press(Click) |> button.done
+  }, fn(model, message) {
+    case message {
+      Initialized -> #(model + 1, task.none())
+      Click -> {
+        let command = {
+          use _ <- task.wake_up(10)
+          task.done(Completed)
+        }
+        #(model + 10, command)
+      }
+      Completed -> #(model + 1, task.none())
+    }
   }) |> app.run_with(fn(program) {
-    fake.value(program, [fake.PrintlnResponse("init"), fake.PrintlnResponse("update")])
+    before_execute()
+    fake.messages(program, [fake.WakeUpResponse(0), fake.WakeUpResponse(10)])
   })
   verify()
 }
@@ -40,7 +56,7 @@ pub fn main() {
     project.write_out(
         "mock.mjs",
         r#"
-let log = [];
+let log = [], executions = 0;
 export function setup() {
     console.log = value => log.push(value);
     let waits = 0;
@@ -52,9 +68,14 @@ export function setup() {
     sgleam.wait_event = () => waits++ === 0 ? 1 : -1;
     sgleam.next_event = () => events.shift() ?? "";
 }
+export function before_execute() {
+    executions++;
+    if (log.length !== executions) throw new Error("Task ran before its model was rendered");
+}
 export function verify() {
-    if (log.length !== 2 || !log[0].includes(">0</button>") ||
-        !log[1].includes(">2</button>")) {
+    const models = [10, 11, 21, 22, 32, 33];
+    if (log.length !== models.length || executions !== models.length ||
+        models.some((n, i) => !log[i].includes(">" + n + "</button>"))) {
         throw new Error("Wrong effect/render order: " + JSON.stringify(log));
     }
 }
@@ -71,13 +92,15 @@ fn stop_when_checks_initial_and_updated_models_without_draining_extra_events() {
     for effectful in [false, true] {
         for initial in [0, 1] {
             let module = if effectful { "app" } else { "simple_app" };
-            let init = if effectful {
-                format!("task.done({initial})")
+            let init = if effectful && initial == 0 {
+                "#(0, task.none())".to_string()
+            } else if effectful {
+                format!("#({initial}, task.get(\"must-not-execute\", fn(_) {{ task.done(Nil) }}))")
             } else {
                 initial.to_string()
             };
             let update = if effectful {
-                "task.done(n + 1)"
+                "#(n + 1, task.get(\"must-not-execute\", fn(_) { task.done(Nil) }))"
             } else {
                 "n + 1"
             };
@@ -139,4 +162,65 @@ export function verify() {{
                 .expect("stops and returns");
         }
     }
+}
+
+#[test]
+fn task_messages_are_fifo_and_use_the_latest_model() {
+    let mut project = Project::default();
+    project.write_source(
+        "fifo.gleam",
+        r#"
+import gleam/int
+import sgleam/task
+import sgleam/task/fake
+import sgleam/ui/app
+import sgleam/ui/text
+type Msg { Start First Second Third }
+@external(javascript, "./fifo_mock.mjs", "setup")
+fn setup() -> Nil
+@external(javascript, "./fifo_mock.mjs", "verify")
+fn verify() -> Nil
+pub fn main() {
+  setup()
+  app.create(fn() { #(0, task.done(Start)) }, fn(n) {
+    text.new(int.to_string(n)) |> text.done
+  }, fn(n, message) {
+    case message {
+      Start -> panic as "The interpreter expands Start"
+      First -> #(n * 10 + 1, task.done(Third))
+      Second -> #(n * 10 + 2, task.none())
+      Third -> #(n * 10 + 3, task.none())
+    }
+  })
+  |> app.stop_when(fn(n) { n == 123 })
+  |> app.run_with(fn(program) {
+    case program {
+      task.Done(Start) -> [First, Second]
+      _ -> fake.messages(program, [])
+    }
+  })
+  verify()
+}
+"#,
+    );
+    project.compile(false).expect("compile FIFO example");
+    project.write_out(
+        "fifo_mock.mjs",
+        r#"
+let views = [];
+export function setup() {
+  sgleam.draw_view = html => views.push(html);
+  sgleam.next_event = () => { throw new Error("Read UI before draining task messages"); };
+  sgleam.wait_event = () => { throw new Error("Unexpected wait"); };
+}
+export function verify() {
+  if (views.length !== 4 || [0, 1, 12, 123].some((n, i) =>
+      !views[i].includes(">" + n + "<"))) throw new Error(JSON.stringify(views));
+}
+"#,
+    );
+    QuickJsEngine::new(project.fs)
+        .expect("runtime")
+        .run_main("fifo", MainFunction::Main)
+        .expect("FIFO task messages");
 }

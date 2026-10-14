@@ -1,208 +1,271 @@
-// Verificações puras: uma asserção interrompe o exemplo se houver divergência.
-// smain devolve o resumo; somente o ambiente apresenta esse resumo.
+// Asserções puras para GET, POST, erros HTTP e wake_up. Não há rede nem espera.
 import gleam/int
+import gleam/list
 import sgleam/task.{type Task}
 import sgleam/task/fake
 
 fn program() -> Task(Int) {
-  use get <- task.get("https://malbarbo.pro.br")
-  case get {
+  use response <- task.get("https://example.com/text")
+  case response {
     Ok(content) -> {
-      use write <- task.write_file("arquivo.txt", content)
-      case write {
+      use posted <- task.post(
+        "https://example.com/notes",
+        task.string_body("text/plain", content),
+      )
+      case posted {
         Ok(_) -> {
-          use _ <- task.println("Sucesso")
+          use _ <- task.wake_up(1000)
           task.done(0)
         }
-        Error(_) -> {
-          use _ <- task.println("erro no write_file")
-          task.done(1)
-        }
+        Error(_) -> task.done(2)
       }
     }
-    Error(_) -> {
-      use _ <- task.println("erro no get")
-      task.done(1)
-    }
+    Error(_) -> task.done(1)
   }
 }
 
-// Compara o relatório inteiro: resultado, argumentos e ordem dos pedidos.
 fn success() -> String {
-  let expected =
-    fake.Report(Ok(0), [
-      fake.Get("https://malbarbo.pro.br"),
-      fake.WriteFile("arquivo.txt", "conteúdo de demonstração"),
-      fake.Println("Sucesso"),
-    ])
-  let assert True = fake.run(program(), fake.demo_responses()) == expected
-  "OK: sucesso e histórico completo"
-}
-
-fn get_error() -> String {
-  let report =
-    fake.run(program(), [
-      fake.GetResponse("https://malbarbo.pro.br", Error("offline")),
-      fake.PrintlnResponse("erro no get"),
-    ])
   let assert True =
-    report
-    == fake.Report(Ok(1), [
-      fake.Get("https://malbarbo.pro.br"),
-      fake.Println("erro no get"),
+    fake.run(program(), fake.demo_responses())
+    == fake.Report(Ok(0), [
+      fake.Get("https://example.com/text"),
+      fake.Post(
+        "https://example.com/notes",
+        task.string_body("text/plain", "texto de demonstração"),
+      ),
+      fake.WakeUp(1000),
     ])
-  "OK: erro de GET não solicita gravação"
+  "OK: GET -> POST -> wake_up e histórico completo"
 }
 
-fn write_error() -> String {
-  let report =
-    fake.run(program(), [
-      fake.GetResponse("https://malbarbo.pro.br", Ok("texto")),
-      fake.WriteFileResponse("arquivo.txt", "texto", Error("sem permissão")),
-      fake.PrintlnResponse("erro no write_file"),
-    ])
+fn http_errors() -> String {
+  let errors = [
+    task.BadUrl("inválida"),
+    task.Timeout,
+    task.NetworkError,
+    task.BadStatus(404),
+    task.BadStatus(500),
+  ]
+  let _ =
+    list.map(errors, fn(error) {
+      let get = task.get("url", fn(result) { task.done(result) })
+      let post =
+        task.post("url", task.empty_body(), fn(result) { task.done(result) })
+      let assert Ok(Error(received_get)) =
+        fake.run(get, [fake.GetResponse("url", Error(error))]).result
+      let assert Ok(Error(received_post)) =
+        fake.run(post, [
+          fake.PostResponse("url", task.empty_body(), Error(error)),
+        ]).result
+      let assert True = received_get == error && received_post == error
+    })
+  "OK: GET e POST preservam todas as variantes de HttpError"
+}
+
+fn error_branches() -> String {
   let assert True =
-    report
-    == fake.Report(Ok(1), [
-      fake.Get("https://malbarbo.pro.br"),
-      fake.WriteFile("arquivo.txt", "texto"),
-      fake.Println("erro no write_file"),
+    fake.run(program(), [
+      fake.GetResponse("https://example.com/text", Error(task.NetworkError)),
     ])
-  "OK: erro de gravação segue o ramo correto"
+    == fake.Report(Ok(1), [fake.Get("https://example.com/text")])
+  let body = task.string_body("text/plain", "texto")
+  let assert True =
+    fake.run(program(), [
+      fake.GetResponse("https://example.com/text", Ok("texto")),
+      fake.PostResponse(
+        "https://example.com/notes",
+        body,
+        Error(task.BadStatus(500)),
+      ),
+    ])
+    == fake.Report(Ok(2), [
+      fake.Get("https://example.com/text"),
+      fake.Post("https://example.com/notes", body),
+    ])
+  "OK: erros interrompem a sequência conforme os ramos do programa"
 }
 
-// panic funciona como sentinela: se o fake chamar next, o exemplo falha.
+fn status_codes() -> String {
+  let _ =
+    list.map([200, 201, 204, 299], fn(status) {
+      let assert True = fake.http_response(status, "") == Ok("")
+    })
+  let _ =
+    list.map([199, 300, 301, 400, 404, 500], fn(status) {
+      let assert True =
+        fake.http_response(status, "corpo") == Error(task.BadStatus(status))
+    })
+  "OK: status final 2xx é sucesso; demais códigos são BadStatus"
+}
+
 fn unknown_get() -> String {
-  let description: Task(Int) = {
-    use _ <- task.get("https://desconhecido.invalid")
-    panic as "A continuação de um pedido desconhecido não deve ser chamada"
-  }
-  let request = fake.Get("https://desconhecido.invalid")
+  let program: Task(Int) =
+    task.get("unknown", fn(_) { panic as "next não deve ser chamado" })
   let assert True =
-    fake.run(description, [])
-    == fake.Report(Error(fake.UnexpectedRequest(request)), [request])
-  "OK: GET desconhecido interrompe sem chamar next"
-}
-
-fn unknown_write() -> String {
-  let description: Task(Int) = {
-    use _ <- task.write_file("arquivo.txt", "conteúdo diferente")
-    panic as "Não deveria continuar"
-  }
-  let request = fake.WriteFile("arquivo.txt", "conteúdo diferente")
-  // Mesmo caminho não basta: o conteúdo também precisa corresponder.
-  let assert True =
-    fake.run(description, [
-      fake.WriteFileResponse("arquivo.txt", "conteúdo esperado", Ok(Nil)),
+    fake.run(program, [])
+    == fake.Report(Error(fake.UnexpectedRequest(fake.Get("unknown"))), [
+      fake.Get("unknown"),
     ])
-    == fake.Report(Error(fake.UnexpectedRequest(request)), [request])
-  "OK: gravação exige caminho e conteúdo conhecidos"
+  "OK: GET desconhecido não chama a continuação"
 }
 
-fn unknown_println() -> String {
-  let description: Task(Int) = {
-    use _ <- task.println("Conhecida")
-    use _ <- task.println("Desconhecida")
-    panic as "Não deveria continuar"
+fn exact_post() -> String {
+  let body = task.string_body("application/json", "{}")
+  let program: Task(Int) =
+    task.post("url", body, fn(_) { panic as "POST não deve continuar" })
+  let _ =
+    list.map(
+      [
+        fake.PostResponse("outra", body, Ok("")),
+        fake.PostResponse("url", task.string_body("text/plain", "{}"), Ok("")),
+        fake.PostResponse(
+          "url",
+          task.string_body("application/json", "[]"),
+          Ok(""),
+        ),
+        fake.PostResponse("url", task.empty_body(), Ok("")),
+        fake.GetResponse("url", Ok("")),
+      ],
+      fn(response) {
+        let request = fake.Post("url", body)
+        let assert True =
+          fake.run(program, [response])
+          == fake.Report(Error(fake.UnexpectedRequest(request)), [request])
+      },
+    )
+  "OK: POST exige método, URL, tipo de conteúdo e corpo correspondentes"
+}
+
+fn wake_up() -> String {
+  let program: Task(Int) = {
+    use _ <- task.wake_up(1000)
+    task.done(42)
   }
-  let request = fake.Println("Desconhecida")
   let assert True =
-    fake.run(description, [fake.PrintlnResponse("Conhecida")])
-    == fake.Report(Error(fake.UnexpectedRequest(request)), [
-      fake.Println("Conhecida"),
-      request,
+    fake.run(program, [fake.WakeUpResponse(1000)])
+    == fake.Report(Ok(42), [fake.WakeUp(1000)])
+  let unknown: Task(Int) =
+    task.wake_up(1000, fn(_) { panic as "intervalo desconhecido" })
+  let assert True =
+    fake.run(unknown, [fake.WakeUpResponse(999)]).result
+    == Error(fake.UnexpectedRequest(fake.WakeUp(1000)))
+  let _ =
+    list.map([-10, 0], fn(delay) {
+      let zero = task.wake_up(delay, fn(_) { task.done(Nil) })
+      let assert True =
+        fake.run(zero, [fake.WakeUpResponse(0)])
+        == fake.Report(Ok(Nil), [fake.WakeUp(0)])
+    })
+  "OK: wake_up usa milissegundos, exige confirmação e normaliza negativos"
+}
+
+fn unknown_preserves_history() -> String {
+  let program: Task(Int) = {
+    use _ <- task.get("url")
+    use _ <- task.wake_up(10)
+    panic as "Não deve chegar aqui"
+  }
+  let assert True =
+    fake.run(program, [fake.GetResponse("url", Ok(""))])
+    == fake.Report(Error(fake.UnexpectedRequest(fake.WakeUp(10))), [
+      fake.Get("url"),
+      fake.WakeUp(10),
     ])
-  "OK: impressão desconhecida preserva o histórico anterior"
+  "OK: pedido desconhecido preserva o histórico anterior"
 }
 
-fn done_and_then() -> String {
-  let assert True = fake.run(task.done(42), []) == fake.Report(Ok(42), [])
-  // O resultado muda de Int para String.
-  let converted = {
-    use number <- task.then(task.done(42))
-    task.done(int.to_string(number))
-  }
-  let assert True = fake.run(converted, []) == fake.Report(Ok("42"), [])
-  "OK: done e then com mudança de tipo"
-}
-
-fn composed_requests() -> String {
-  let first = {
-    use response <- task.get("https://malbarbo.pro.br")
-    case response {
-      Ok(content) -> {
-        use _ <- task.write_file("arquivo.txt", content)
-        use _ <- task.println("Sucesso")
-        task.done(10)
-      }
-      Error(_) -> task.done(0)
-    }
-  }
-  // then deve preservar GET, gravação e impressão antes da próxima etapa.
+fn composition() -> String {
   let composed = {
-    use number <- task.then(first)
-    use _ <- task.println("Fim")
-    task.done(int.to_string(number + 5))
+    use value <- task.then(program())
+    use _ <- task.wake_up(5)
+    task.done(int.to_string(value + 10))
   }
   let report =
-    fake.run(composed, [fake.PrintlnResponse("Fim"), ..fake.demo_responses()])
+    fake.run(composed, [fake.WakeUpResponse(5), ..fake.demo_responses()])
+  let assert Ok("10") = report.result
   let assert True =
-    report
-    == fake.Report(Ok("15"), [
-      fake.Get("https://malbarbo.pro.br"),
-      fake.WriteFile("arquivo.txt", "conteúdo de demonstração"),
-      fake.Println("Sucesso"),
-      fake.Println("Fim"),
-    ])
-  "OK: then preserva todos os pedidos e encadeia a próxima tarefa"
+    report.requests
+    == [
+      fake.Get("https://example.com/text"),
+      fake.Post(
+        "https://example.com/notes",
+        task.string_body("text/plain", "texto de demonstração"),
+      ),
+      fake.WakeUp(1000),
+      fake.WakeUp(5),
+    ]
+  let assert Ok("42") =
+    fake.run(
+      task.then(task.done(42), fn(n) { task.done(int.to_string(n)) }),
+      [],
+    ).result
+  "OK: then preserva GET, POST e wake_up e permite mudar o tipo final"
 }
 
 fn repeatable() -> String {
-  let description = program()
   let replies = fake.demo_responses()
-  let assert True =
-    fake.run(description, replies) == fake.run(description, replies)
+  let assert True = fake.run(program(), replies) == fake.run(program(), replies)
   let repeated = {
-    use _ <- task.println("Mesma mensagem")
-    use _ <- task.println("Mesma mensagem")
+    use _ <- task.wake_up(1000)
+    use _ <- task.wake_up(1000)
     task.done(Nil)
   }
   let assert True =
-    fake.run(repeated, [fake.PrintlnResponse("Mesma mensagem")])
-    == fake.Report(Ok(Nil), [
-      fake.Println("Mesma mensagem"),
-      fake.Println("Mesma mensagem"),
-    ])
+    fake.run(repeated, [fake.WakeUpResponse(1000)])
+    == fake.Report(Ok(Nil), [fake.WakeUp(1000), fake.WakeUp(1000)])
   "OK: simulação repetível e respostas reutilizáveis"
 }
 
-fn first_response_wins() -> String {
-  let description = {
-    use response <- task.get("url")
-    task.done(response)
-  }
+fn first_response_and_adapters() -> String {
+  let get = task.get("url", fn(result) { task.done(result) })
   let assert Ok(Ok("primeira")) =
-    fake.run(description, [
-      fake.GetResponse("outra", Ok("ignorada")),
+    fake.run(get, [
       fake.GetResponse("url", Ok("primeira")),
-      fake.GetResponse("url", Ok("segunda")),
+      fake.GetResponse("url", Error(task.Timeout)),
+    ]).result
+  let post =
+    task.post("url", task.empty_body(), fn(result) { task.done(result) })
+  let assert Ok(Ok("primeira")) =
+    fake.run(post, [
+      fake.PostResponse("url", task.empty_body(), Ok("primeira")),
+      fake.PostResponse("url", task.empty_body(), Error(task.Timeout)),
     ]).result
   let assert 0 = fake.value(program(), fake.demo_responses())
   let assert 0 = fake.demo_value(program())
-  "OK: primeira resposta correspondente e adaptadores value/demo_value"
+  let assert True = fake.demo_messages(program()) == [0]
+  "OK: primeira resposta correspondente e adaptadores"
+}
+
+fn no_message() -> String {
+  let empty: Task(Int) = task.none()
+  let assert True = fake.run_messages(empty, []) == fake.Report(Ok([]), [])
+  let assert True = fake.run(empty, []).result == Error(fake.NoValue)
+  let chained = task.then(empty, fn(_) { panic as "none não deve chamar next" })
+  let assert True = fake.messages(chained, []) == []
+  let silent: Task(Int) = {
+    use _ <- task.wake_up(0)
+    task.none()
+  }
+  let assert True =
+    fake.run_messages(silent, [fake.WakeUpResponse(0)])
+    == fake.Report(Ok([]), [fake.WakeUp(0)])
+  let assert True = fake.messages(task.done(42), []) == [42]
+  "OK: none não produz mensagem; done produz uma"
 }
 
 pub fn smain() -> List(String) {
   [
     success(),
-    get_error(),
-    write_error(),
+    http_errors(),
+    error_branches(),
+    status_codes(),
     unknown_get(),
-    unknown_write(),
-    unknown_println(),
-    done_and_then(),
-    composed_requests(),
+    exact_post(),
+    wake_up(),
+    unknown_preserves_history(),
+    composition(),
     repeatable(),
-    first_response_wins(),
+    first_response_and_adapters(),
+    no_message(),
   ]
 }

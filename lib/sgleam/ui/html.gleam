@@ -5,8 +5,8 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 
 import sgleam/ui/element.{
-  type Choice, type Element, Button, Checkbox, Column, Link, Picker, Radio, Row,
-  Text, TextArea, TextInput,
+  type Choice, type Element, Button, Checkbox, Column, Link, Picker, RadioGroup,
+  Row, Text, TextArea, TextInput,
 }
 import sgleam/ui/event.{type Handler}
 
@@ -136,29 +136,7 @@ fn render_element(
       )
     }
 
-    Radio(repr) -> {
-      let #(group, value, checked, message, enabled) = element.radio_data(repr)
-
-      let #(event_attr, handlers, after) =
-        register_radio_handler(message, next, handlers)
-
-      #(
-        indent(level)
-          <> "<input type=\"radio\""
-          <> " name=\""
-          <> escape(group)
-          <> "\""
-          <> " value=\""
-          <> escape(value)
-          <> "\""
-          <> bool_attr("checked", checked)
-          <> disabled_attr(enabled)
-          <> event_attr
-          <> ">",
-        handlers,
-        after,
-      )
-    }
+    RadioGroup(repr) -> render_radio_group(repr, level, next, handlers)
 
     Picker(repr) -> render_picker(repr, level, next, handlers)
 
@@ -204,6 +182,94 @@ fn render_text_tag(
     handlers,
     next,
   )
+}
+
+fn render_radio_group(
+  repr,
+  level: Int,
+  next: Int,
+  handlers: Dict(Int, Handler(msg)),
+) {
+  let #(options, enabled, label) = element.radio_group_data(repr)
+  // Reserve an id even for empty, disabled, or handlerless groups.
+  let name = "sgleam-radio-group-" <> int.to_string(next)
+  let #(body, handlers, after) =
+    render_radio_options(
+      options,
+      name,
+      enabled,
+      level + 1,
+      0,
+      next + 1,
+      handlers,
+      False,
+    )
+  #(
+    indent(level)
+      <> "<div role=\"radiogroup\""
+      <> option_attr("aria-label", label)
+      <> " style=\"display: flex; flex-direction: column; align-items: flex-start;\">\n"
+      <> body
+      <> "\n"
+      <> indent(level)
+      <> "</div>",
+    handlers,
+    after,
+  )
+}
+
+fn render_radio_options(
+  options: List(#(String, Bool, Option(msg))),
+  name: String,
+  enabled: Bool,
+  level: Int,
+  index: Int,
+  next: Int,
+  handlers: Dict(Int, Handler(msg)),
+  selected: Bool,
+) {
+  case options {
+    [] -> #("", handlers, next)
+    [#(label, checked, message), ..rest] -> {
+      // At most one checked radio, even if a caller repeats a value.
+      let checked = checked && !selected
+      let message = case enabled {
+        True -> message
+        False -> None
+      }
+      let #(attr, handlers, after) =
+        register_radio_handler(message, next, handlers)
+      let item =
+        indent(level)
+        <> "<label><input type=\"radio\" name=\""
+        <> name
+        <> "\" value=\""
+        <> int.to_string(index)
+        <> "\""
+        <> bool_attr("checked", checked)
+        <> disabled_attr(enabled)
+        <> attr
+        <> "><span>"
+        <> escape(label)
+        <> "</span></label>"
+      let #(tail, handlers, after) =
+        render_radio_options(
+          rest,
+          name,
+          enabled,
+          level,
+          index + 1,
+          after,
+          handlers,
+          selected || checked,
+        )
+      let separator = case tail {
+        "" -> ""
+        _ -> "\n"
+      }
+      #(item <> separator <> tail, handlers, after)
+    }
+  }
 }
 
 fn render_picker(
@@ -275,6 +341,10 @@ fn render_layout(
     indent(level)
       <> "<div style=\"display: flex; box-sizing: border-box; flex-direction: "
       <> direction
+      <> case direction {
+      "column" -> "; align-items: flex-start"
+      _ -> ""
+    }
       <> ";\">\n"
       <> body
       <> "\n"

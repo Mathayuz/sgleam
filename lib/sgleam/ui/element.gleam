@@ -7,7 +7,7 @@ pub type Element(msg) {
   TextInput(TextInputRepr(msg))
   TextArea(TextAreaRepr(msg))
   Checkbox(CheckboxRepr(msg))
-  Radio(RadioRepr(msg))
+  RadioGroup(RadioGroupRepr(msg))
   Picker(PickerRepr(msg))
   Link(LinkRepr(msg))
   Row(LayoutRepr(msg))
@@ -46,14 +46,30 @@ pub opaque type CheckboxRepr(msg) {
   CheckboxRepr(checked: Bool, on_change: Option(fn(Bool) -> msg), enabled: Bool)
 }
 
-pub opaque type RadioRepr(msg) {
-  RadioRepr(
-    group: String,
-    value: String,
-    checked: Bool,
-    on_select: Option(msg),
+/// Values should be distinct comparable data (not functions).
+pub opaque type RadioGroup(value, msg) {
+  RadioGroupBuilder(
+    selected: Option(value),
+    options: List(#(value, String)),
+    on_select: Option(fn(value) -> msg),
     enabled: Bool,
+    label: Option(String),
   )
+}
+
+/// Typed values are converted to messages by the public radio_group builder.
+pub opaque type RadioGroupRepr(msg) {
+  RadioGroupRepr(
+    options: List(#(String, Bool, Option(msg))),
+    enabled: Bool,
+    label: Option(String),
+  )
+}
+
+pub fn radio_group_data(
+  repr: RadioGroupRepr(msg),
+) -> #(List(#(String, Bool, Option(msg))), Bool, Option(String)) {
+  #(repr.options, repr.enabled, repr.label)
 }
 
 pub opaque type Choice {
@@ -251,38 +267,58 @@ pub fn checkbox_data(
   #(repr.checked, repr.on_change, repr.enabled)
 }
 
-// Radio
+// Radio group
 
-pub fn new_radio(
-  group: String,
-  value: String,
-  checked: Bool,
-) -> RadioRepr(msg) {
-  RadioRepr(
-    group: group,
-    value: value,
-    checked: checked,
-    on_select: None,
-    enabled: True,
-  )
+/// None starts with no selection; Some(value) selects a matching option.
+pub fn new_radio_group(selected: Option(value)) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(selected, [], None, True, None)
 }
 
-pub fn radio_on_select(repr: RadioRepr(msg), message: msg) -> RadioRepr(msg) {
-  RadioRepr(..repr, on_select: Some(message))
+/// Adds an option. Options appear in the order they are added.
+pub fn radio_group_option(
+  group: RadioGroup(value, msg),
+  value: value,
+  label: String,
+) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(..group, options: [#(value, label), ..group.options])
 }
 
-pub fn radio_enabled(repr: RadioRepr(msg), enabled: Bool) -> RadioRepr(msg) {
-  RadioRepr(..repr, enabled: enabled)
+pub fn radio_group_on_select(
+  group: RadioGroup(value, msg),
+  handler: fn(value) -> msg,
+) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(..group, on_select: Some(handler))
 }
 
-pub fn radio_done(repr: RadioRepr(msg)) -> Element(msg) {
-  Radio(repr)
+pub fn radio_group_enabled(
+  group: RadioGroup(value, msg),
+  enabled: Bool,
+) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(..group, enabled:)
 }
 
-pub fn radio_data(
-  repr: RadioRepr(msg),
-) -> #(String, String, Bool, Option(msg), Bool) {
-  #(repr.group, repr.value, repr.checked, repr.on_select, repr.enabled)
+/// An accessible name for the group; each option already has its own label.
+pub fn radio_group_label(
+  group: RadioGroup(value, msg),
+  label: String,
+) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(..group, label: Some(label))
+}
+
+pub fn radio_group_done(group: RadioGroup(value, msg)) -> Element(msg) {
+  let options =
+    group.options
+    |> list.reverse
+    |> list.map(fn(pair) {
+      let #(value, label) = pair
+      let checked = case group.selected {
+        Some(selected) -> selected == value
+        None -> False
+      }
+      let message = option.map(group.on_select, fn(handler) { handler(value) })
+      #(label, checked, message)
+    })
+  RadioGroup(RadioGroupRepr(options, group.enabled, group.label))
 }
 
 // Choice
@@ -428,8 +464,16 @@ pub fn map(element: Element(a), transform: fn(a) -> b) -> Element(b) {
         ),
       )
 
-    Radio(repr) ->
-      Radio(RadioRepr(..repr, on_select: option.map(repr.on_select, transform)))
+    RadioGroup(repr) ->
+      RadioGroup(
+        RadioGroupRepr(
+          ..repr,
+          options: list.map(repr.options, fn(item) {
+            let #(label, checked, message) = item
+            #(label, checked, option.map(message, transform))
+          }),
+        ),
+      )
 
     Picker(repr) ->
       Picker(

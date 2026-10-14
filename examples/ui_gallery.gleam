@@ -1,13 +1,14 @@
 // Galeria de todos os componentes de sgleam/ui, sem tarefas ou I/O no modelo.
 // No playground, carregue o arquivo e execute main() no REPL.
 import gleam/int
+import gleam/option.{type Option, None, Some}
 import sgleam/ui/button
 import sgleam/ui/checkbox
 import sgleam/ui/element.{type Element}
 import sgleam/ui/layout
 import sgleam/ui/link
 import sgleam/ui/picker
-import sgleam/ui/radio
+import sgleam/ui/radio_group
 import sgleam/ui/simple_app
 import sgleam/ui/text
 import sgleam/ui/text_area
@@ -19,7 +20,7 @@ type Model {
     name: String,
     notes: String,
     checked: Bool,
-    size: String,
+    size: Option(String),
     color: String,
     last_event: String,
   )
@@ -38,7 +39,7 @@ type Msg {
 }
 
 fn init() -> Model {
-  Model(0, "", "", False, "medio", "azul", "Nenhuma interação ainda.")
+  Model(0, "", "", False, None, "azul", "Nenhuma interação ainda.")
 }
 
 fn update(model: Model, message: Msg) -> Model {
@@ -54,7 +55,11 @@ fn update(model: Model, message: Msg) -> Model {
     Checked(checked) ->
       Model(..model, checked:, last_event: "Checkbox alterado.")
     SizeSelected(size) ->
-      Model(..model, size:, last_event: "Radio selecionado: " <> size)
+      Model(
+        ..model,
+        size: Some(size),
+        last_event: "Radio selecionado: " <> size,
+      )
     ColorSelected(color) ->
       Model(..model, color:, last_event: "Picker selecionado: " <> color)
     LinkPressed -> Model(..model, last_event: "Link com evento clicado.")
@@ -67,16 +72,6 @@ fn label(value: String) -> Element(Msg) {
 
 fn section(title: String, children: List(Element(Msg))) -> Element(Msg) {
   layout.column([label(title), ..children]) |> layout.done
-}
-
-fn size_option(model: Model, value: String, title: String) -> Element(Msg) {
-  layout.row([
-    radio.new("gallery-size", value, model.size == value)
-      |> radio.on_select(SizeSelected(value))
-      |> radio.done,
-    label(title),
-  ])
-  |> layout.done
 }
 
 fn colors() -> List(element.Choice) {
@@ -113,7 +108,7 @@ fn view(model: Model) -> Element(Msg) {
       ])
         |> layout.done,
       label("Cliques: " <> int.to_string(model.clicks)),
-      // Fora de uma row, permite comparar o comportamento dentro de column.
+      // A column também preserva a largura natural do botão.
       button.new("Botão em coluna") |> button.on_press(Click) |> button.done,
     ]),
     section("3. TextInput", [
@@ -157,21 +152,22 @@ fn view(model: Model) -> Element(Msg) {
         False -> "Estado: desmarcado"
       }),
     ]),
-    section("6. Radio — um grupo com três opções", [
-      layout.row([
-        size_option(model, "pequeno", "Pequeno"),
-        size_option(model, "medio", "Médio"),
-        size_option(model, "grande", "Grande"),
-        radio.new("gallery-disabled", "fixo", True)
-          |> radio.enabled(False)
-          |> radio.done,
-        label("Radio desabilitado"),
-      ])
-        |> layout.done,
-      label("Selecionado: " <> model.size),
+    section("6. RadioGroup — seleção inicialmente vazia", [
+      radio_group.new(model.size)
+        |> radio_group.label("Tamanho")
+        |> radio_group.option("pequeno", "Pequeno")
+        |> radio_group.option("medio", "Médio")
+        |> radio_group.option("grande", "Grande")
+        |> radio_group.on_select(SizeSelected)
+        |> radio_group.done,
+      radio_group.new(Some("fixo"))
+        |> radio_group.option("fixo", "Radio desabilitado")
+        |> radio_group.enabled(False)
+        |> radio_group.done,
+      label("Selecionado: " <> option.unwrap(model.size, "Nenhum")),
     ]),
     section("7. Picker (seleção)", [
-      // A row ocupa a largura da coluna, mas o picker mantém sua largura natural.
+      // Tanto row quanto column preservam aqui a largura natural do picker.
       layout.row([
         picker.new(colors())
         |> picker.selected(model.color)
