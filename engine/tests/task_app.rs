@@ -274,3 +274,42 @@ export function verify() {
         .run_main("batch", MainFunction::Main)
         .expect("batched events");
 }
+
+#[test]
+fn next_event_handles_empty_queue_and_preserves_valid_events() {
+    let mut project = Project::default();
+    project.write_source(
+        "event_queue.gleam",
+        r#"
+import gleam/dynamic/decode
+import sgleam/system
+@external(javascript, "./event_queue_mock.mjs", "setup")
+fn setup() -> Nil
+pub fn main() {
+  setup()
+  let assert Error(Nil) = system.next_event()
+  let assert Error(Nil) = system.next_event()
+  let assert Ok(raw) = system.next_event()
+  let assert Ok("ui") = decode.run(raw, decode.field("kind", decode.string, decode.success))
+  let assert Error(Nil) = system.next_event()
+}
+"#,
+    );
+    project
+        .compile(false)
+        .expect("compile event queue regression");
+    project.write_out(
+        "event_queue_mock.mjs",
+        r#"
+export function setup() {
+  // Rust Option::None becomes undefined in the JavaScript runtime.
+  const events = [undefined, "", JSON.stringify({kind: "ui", h: 0, e: "click"})];
+  sgleam.next_event = () => events.shift();
+}
+"#,
+    );
+    QuickJsEngine::new(project.fs)
+        .expect("runtime")
+        .run_main("event_queue", MainFunction::Main)
+        .expect("empty queue returns Error without parsing undefined");
+}
