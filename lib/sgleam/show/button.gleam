@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type ButtonRepr, type Element}
+import sgleam/show/element.{type ButtonRepr, type Element}
 
 pub fn new(label: String) -> ButtonRepr(msg) {
   element.new_button(label)

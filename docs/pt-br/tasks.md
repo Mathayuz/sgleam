@@ -219,6 +219,17 @@ não um prazo contado por um temporizador.
 | view | `fn(model) -> Element(msg)` | `fn(model) -> Element(msg)` |
 | update | `fn(model, msg) -> model` | `fn(model, msg) -> #(model, Task(msg))` |
 
+O `SimpleApp` é um wrapper que guarda um `App`. Seu construtor adapta `init`
+e `update` para retornar `#(modelo, task.none())`, sem executar `init` antes de
+`run`. `stop_when` e `run` delegam ao App. O tipo opaco e o ciclo de execução
+ficam em `sgleam/show/internal/application`, com um modo interno definido pelo
+construtor: App renderiza após cada atualização; SimpleApp processa os eventos
+disponíveis antes de renderizar novamente, usando os handlers da tela original.
+A API pública não oferece uma opção de modo. Somente o construtor interno com
+callbacks que retornam apenas modelos habilita lotes, garantindo tarefas vazias.
+`stop_when` interrompe o lote após a atualização que satisfaz o predicado e o
+ciclo renderiza o modelo final. O SimpleApp não depende de respostas do fake.
+
 O App apresenta o modelo, interpreta sua tarefa e entrega as mensagens ao update
 com o modelo atual. Mensagens pendentes são processadas em ordem. Depois o loop
 volta aos eventos da interface. `run_with` recebe `fn(Task(msg)) -> List(msg)`.

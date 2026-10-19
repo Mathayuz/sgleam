@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type CheckboxRepr, type Element}
+import sgleam/show/element.{type CheckboxRepr, type Element}
 
 pub fn new(checked: Bool) -> CheckboxRepr(msg) {
   element.new_checkbox(checked)

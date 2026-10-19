@@ -2,13 +2,13 @@
 import gleam/int
 import sgleam/task.{type Task}
 import sgleam/task/fake
-import sgleam/ui/app
-import sgleam/ui/button
-import sgleam/ui/element.{type Element}
-import sgleam/ui/layout
-import sgleam/ui/text
-import sgleam/ui/text_area
-import sgleam/ui/text_input
+import sgleam/show/app
+import sgleam/show/button
+import sgleam/show/element.{type Element}
+import sgleam/show/layout
+import sgleam/show/text
+import sgleam/show/text_area
+import sgleam/show/text_input
 
 type Model {
   Model(url: String, content: String, status: String)

@@ -269,9 +269,16 @@ pub fn checkbox_data(
 
 // Radio group
 
-/// None starts with no selection; Some(value) selects a matching option.
-pub fn new_radio_group(selected: Option(value)) -> RadioGroup(value, msg) {
-  RadioGroupBuilder(selected, [], None, True, None)
+/// Creates a group with no selected option.
+pub fn new_radio_group() -> RadioGroup(value, msg) {
+  RadioGroupBuilder(None, [], None, True, None)
+}
+
+pub fn radio_group_select(
+  group: RadioGroup(value, msg),
+  value: value,
+) -> RadioGroup(value, msg) {
+  RadioGroupBuilder(..group, selected: Some(value))
 }
 
 /// Adds an option. Options appear in the order they are added.

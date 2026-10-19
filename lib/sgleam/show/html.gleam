@@ -4,11 +4,11 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
-import sgleam/ui/element.{
+import sgleam/show/element.{
   type Choice, type Element, Button, Checkbox, Column, Link, Picker, RadioGroup,
   Row, Text, TextArea, TextInput,
 }
-import sgleam/ui/event.{type Handler}
+import sgleam/show/event.{type Handler}
 
 pub fn to_html(element: Element(msg)) -> String {
   let #(html, _) = render(element)
@@ -29,7 +29,7 @@ pub fn to_html_page(element: Element(msg)) -> String {
   <> "<head>\n"
   <> "  <meta charset=\"UTF-8\">\n"
   <> "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-  <> "  <title>sgleam/ui</title>\n"
+  <> "  <title>sgleam/show</title>\n"
   <> "</head>\n"
   <> "<body>\n"
   <> html

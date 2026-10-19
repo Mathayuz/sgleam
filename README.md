@@ -123,13 +123,13 @@ fixtures and returns an ordered history. It never sends HTTP or waits real time.
 A `main` returning `Task(Int)` uses the fixed [web demo](examples/task_web.gleam)
 fixtures. [task_fake](examples/task_fake.gleam) checks the simulation contracts.
 
-`sgleam/ui/simple_app` uses direct model updates. `sgleam/ui/app` uses
+`sgleam/show/simple_app` uses direct model updates. `sgleam/show/app` uses
 `#(model, Task(msg))`: the model is rendered before interpretation, and returned
 messages pass through update. `task.none()` produces no message. `app.run_with`
 accepts a synchronous interpreter returning `List(msg)`.
 
 The UI scope is web; there is no native desktop renderer or real task executor.
-See [the examples](examples/README.md) and
+See [the examples](examples/) and
 [the implementation guide (Portuguese)](docs/pt-br/tasks.md).
 
 ## Documentation

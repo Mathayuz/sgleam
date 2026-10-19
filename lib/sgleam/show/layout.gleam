@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Element, type LayoutRepr}
+import sgleam/show/element.{type Element, type LayoutRepr}
 
 pub fn row(children: List(Element(msg))) -> LayoutRepr(msg) {
   element.new_row(children)

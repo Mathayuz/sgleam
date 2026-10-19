@@ -13,8 +13,8 @@ fn app_interprets_descriptions_without_printing_and_renders_updated_model() {
 import gleam/int
 import sgleam/task
 import sgleam/task/fake
-import sgleam/ui/app
-import sgleam/ui/button
+import sgleam/show/app
+import sgleam/show/button
 @external(javascript, "./mock.mjs", "setup")
 fn setup() -> Nil
 @external(javascript, "./mock.mjs", "verify")
@@ -111,8 +111,8 @@ fn stop_when_checks_initial_and_updated_models_without_draining_extra_events() {
                 &format!(
                     r#"
 import gleam/int
-import sgleam/ui/{module} as app
-import sgleam/ui/button
+import sgleam/show/{module} as app
+import sgleam/show/button
 {imports}
 @external(javascript, "./stop_mock.mjs", "setup")
 fn setup() -> Nil
@@ -173,8 +173,8 @@ fn task_messages_are_fifo_and_use_the_latest_model() {
 import gleam/int
 import sgleam/task
 import sgleam/task/fake
-import sgleam/ui/app
-import sgleam/ui/text
+import sgleam/show/app
+import sgleam/show/text
 type Msg { Start First Second Third }
 @external(javascript, "./fifo_mock.mjs", "setup")
 fn setup() -> Nil
@@ -223,4 +223,54 @@ export function verify() {
         .expect("runtime")
         .run_main("fifo", MainFunction::Main)
         .expect("FIFO task messages");
+}
+
+#[test]
+fn simple_app_batches_events_using_the_rendered_handlers() {
+    let mut project = Project::default();
+    project.write_source(
+        "batch.gleam",
+        r#"
+import gleam/int
+import sgleam/show/simple_app
+import sgleam/show/button
+@external(javascript, "./batch_mock.mjs", "setup")
+fn setup() -> Nil
+@external(javascript, "./batch_mock.mjs", "verify")
+fn verify() -> Nil
+pub fn main() {
+  setup()
+  simple_app.create(fn() { 0 }, fn(n) {
+    button.new(int.to_string(n)) |> button.on_press(n + 1) |> button.done
+  }, fn(n, amount) { n + amount }) |> simple_app.run
+  verify()
+}
+"#,
+    );
+    project.compile(false).expect("compile batched SimpleApp");
+    project.write_out("batch_mock.mjs", r#"
+let views = [], waits = 0;
+export function setup() {
+  let events = [
+    {kind: "invalid"},
+    {kind: "ui", h: 99, e: "click"},
+    {kind: "ui", h: 0, e: "check", checked: true},
+    {kind: "ui", h: 0, e: "click"},
+    {kind: "ui", h: 0, e: "click"},
+  ];
+  sgleam.draw_view = html => views.push(html);
+  sgleam.wait_event = () => ++waits === 1 ? 1 : -1;
+  sgleam.next_event = () => events.length ? JSON.stringify(events.shift()) : "";
+}
+export function verify() {
+  if (waits !== 2 || views.length !== 2 ||
+      !views[0].includes(">0</button>") || !views[1].includes(">2</button>")) {
+    throw new Error("Expected one render per batch with original handlers: " + JSON.stringify(views));
+  }
+}
+"#);
+    QuickJsEngine::new(project.fs)
+        .expect("runtime")
+        .run_main("batch", MainFunction::Main)
+        .expect("batched events");
 }

@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Element, type LinkRepr}
+import sgleam/show/element.{type Element, type LinkRepr}
 
 pub fn new(label: String, uri: String) -> LinkRepr(msg) {
   element.new_link(label, uri)

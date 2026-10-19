@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Element, type TextInputRepr}
+import sgleam/show/element.{type Element, type TextInputRepr}
 
 pub fn new(value: String) -> TextInputRepr(msg) {
   element.new_text_input(value)

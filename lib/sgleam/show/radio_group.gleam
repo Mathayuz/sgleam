@@ -1,9 +1,16 @@
-import gleam/option.{type Option}
-import sgleam/ui/element.{type Element, type RadioGroup}
+import sgleam/show/element.{type Element, type RadioGroup}
 
-/// None starts with no selection; Some(value) selects a matching option.
-pub fn new(selected: Option(value)) -> RadioGroup(value, msg) {
-  element.new_radio_group(selected)
+/// Creates a group with no selected option.
+pub fn new() -> RadioGroup(value, msg) {
+  element.new_radio_group()
+}
+
+/// Selects a matching option. The last call wins; no event is emitted.
+pub fn select(
+  group: RadioGroup(value, msg),
+  value: value,
+) -> RadioGroup(value, msg) {
+  element.radio_group_select(group, value)
 }
 
 /// Adds an option. Options appear in the order they are added.

@@ -1,10 +1,10 @@
 // Contador com SimpleApp: init e update retornam o modelo diretamente.
 import gleam/int
-import sgleam/ui/button
-import sgleam/ui/element.{type Element}
-import sgleam/ui/layout
-import sgleam/ui/simple_app
-import sgleam/ui/text
+import sgleam/show/button
+import sgleam/show/element.{type Element}
+import sgleam/show/layout
+import sgleam/show/simple_app
+import sgleam/show/text
 
 type Msg {
   Increment

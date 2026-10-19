@@ -1,14 +1,14 @@
 import gleam/dict.{type Dict}
-import gleam/dynamic/decode.{type Decoder}
 import gleam/list
 import gleam/result
 
 import sgleam/system
 import sgleam/task.{type Task}
 import sgleam/task/fake
-import sgleam/ui/element.{type Element}
-import sgleam/ui/event.{type Event, type Handler}
-import sgleam/ui/html
+import sgleam/show/element.{type Element}
+import sgleam/show/event.{type Handler}
+import sgleam/show/internal/incoming
+import sgleam/show/html
 
 /// Pure init/update return the current model and a task producing messages.
 /// The environment renders the model, interprets the task, and routes each
@@ -19,6 +19,7 @@ pub opaque type App(model, msg) {
     view: fn(model) -> Element(msg),
     update: fn(model, msg) -> #(model, Task(msg)),
     should_stop: fn(model) -> Bool,
+    mode: Mode,
   )
 }
 
@@ -27,7 +28,26 @@ pub fn create(
   view: fn(model) -> Element(msg),
   update: fn(model, msg) -> #(model, Task(msg)),
 ) -> App(model, msg) {
-  App(init:, view:, update:, should_stop: fn(_) { False })
+  App(init:, view:, update:, should_stop: fn(_) { False }, mode: EachUpdate)
+}
+
+type Mode {
+  EachUpdate
+  BatchEvents
+}
+
+/// Internal constructor: only model-only callbacks can enable batching.
+pub fn create_simple(
+  init: fn() -> model,
+  view: fn(model) -> Element(msg),
+  update: fn(model, msg) -> model,
+) -> App(model, msg) {
+  let application = create(
+    fn() { #(init(), task.none()) },
+    view,
+    fn(model, message) { #(update(model, message), task.none()) },
+  )
+  App(..application, mode: BatchEvents)
 }
 
 /// Renders the final model and stops before its task or queued messages/events.
@@ -39,7 +59,10 @@ pub fn stop_when(
 }
 
 pub fn run(app: App(model, msg)) -> Nil {
-  run_with(app, fake.demo_messages)
+  case app.mode {
+    EachUpdate -> run_with(app, fake.demo_messages)
+    BatchEvents -> run_with(app, fn(_) { [] })
+  }
 }
 
 /// Supplies a synchronous interpreter returning messages, never a model.
@@ -68,7 +91,17 @@ fn loop(
       case messages {
         [message, ..rest] ->
           loop(app, app.update(model, message), rest, execute)
-        [] -> await_event(app, handlers, model, execute)
+        [] ->
+          case app.mode {
+            EachUpdate -> await_event(app, handlers, model, execute)
+            BatchEvents ->
+              case system.wait_event(-1) {
+                system.HasEvent ->
+                  loop(app, #(drain(app, handlers, model), task.none()), [], execute)
+                system.Timeout -> loop(app, #(model, task.none()), [], execute)
+                system.Stopped -> Nil
+              }
+          }
       }
     }
   }
@@ -82,15 +115,7 @@ fn await_event(
 ) -> Nil {
   case system.next_event() {
     Ok(raw) -> {
-      let decoded = {
-        use incoming <- result.try(
-          decode.run(raw, incoming_decoder()) |> result.replace_error(Nil),
-        )
-        let Ui(handler: handler_id, event: incoming_event) = incoming
-        use handler <- result.try(dict.get(handlers, handler_id))
-        event.apply(handler, incoming_event)
-      }
-      case decoded {
+      case incoming.message(raw, handlers) {
         Ok(message) -> loop(app, app.update(model, message), [], execute)
         Error(_) -> await_event(app, handlers, model, execute)
       }
@@ -104,42 +129,27 @@ fn await_event(
   }
 }
 
-type Incoming {
-  Ui(handler: Int, event: Event)
-}
-
-fn incoming_decoder() -> Decoder(Incoming) {
-  use kind <- decode.field("kind", decode.string)
-
-  case kind {
-    "ui" -> {
-      use handler <- decode.field("h", decode.int)
-      use incoming_event <- decode.then(event_decoder())
-
-      decode.success(Ui(handler: handler, event: incoming_event))
-    }
-
-    _ ->
-      decode.failure(Ui(handler: 0, event: event.NoValue), expected: "Incoming")
-  }
-}
-
-fn event_decoder() -> Decoder(Event) {
-  use event_kind <- decode.field("e", decode.string)
-
-  case event_kind {
-    "click" -> decode.success(event.NoValue)
-
-    "input" | "submit" | "select" -> {
-      use value <- decode.field("value", decode.string)
-      decode.success(event.StringValue(value))
-    }
-
-    "check" -> {
-      use checked <- decode.field("checked", decode.bool)
-      decode.success(event.BoolValue(checked))
-    }
-
-    _ -> decode.failure(event.NoValue, expected: "Event")
+// Only create_simple enables this path, so every update returns task.none().
+fn drain(
+  app: App(model, msg),
+  handlers: Dict(Int, Handler(msg)),
+  model: model,
+) -> model {
+  case app.should_stop(model) {
+    True -> model
+    False ->
+      case system.next_event() {
+        Error(_) -> model
+        Ok(raw) -> {
+          let next_model =
+            incoming.message(raw, handlers)
+            |> result.map(fn(message) {
+              let #(updated, _) = app.update(model, message)
+              updated
+            })
+            |> result.unwrap(model)
+          drain(app, handlers, next_model)
+        }
+      }
   }
 }

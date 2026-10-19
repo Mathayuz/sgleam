@@ -1,18 +1,18 @@
-// Galeria de todos os componentes de sgleam/ui, sem tarefas ou I/O no modelo.
+// Galeria de todos os componentes de sgleam/show, sem tarefas ou I/O no modelo.
 // No playground, carregue o arquivo e execute main() no REPL.
 import gleam/int
 import gleam/option.{type Option, None, Some}
-import sgleam/ui/button
-import sgleam/ui/checkbox
-import sgleam/ui/element.{type Element}
-import sgleam/ui/layout
-import sgleam/ui/link
-import sgleam/ui/picker
-import sgleam/ui/radio_group
-import sgleam/ui/simple_app
-import sgleam/ui/text
-import sgleam/ui/text_area
-import sgleam/ui/text_input
+import sgleam/show/button
+import sgleam/show/checkbox
+import sgleam/show/element.{type Element}
+import sgleam/show/layout
+import sgleam/show/link
+import sgleam/show/picker
+import sgleam/show/radio_group
+import sgleam/show/simple_app
+import sgleam/show/text
+import sgleam/show/text_area
+import sgleam/show/text_input
 
 type Model {
   Model(
@@ -153,14 +153,20 @@ fn view(model: Model) -> Element(Msg) {
       }),
     ]),
     section("6. RadioGroup — seleção inicialmente vazia", [
-      radio_group.new(model.size)
+      {
+        case model.size {
+          None -> radio_group.new()
+          Some(value) -> radio_group.new() |> radio_group.select(value)
+        }
+      }
         |> radio_group.label("Tamanho")
         |> radio_group.option("pequeno", "Pequeno")
         |> radio_group.option("medio", "Médio")
         |> radio_group.option("grande", "Grande")
         |> radio_group.on_select(SizeSelected)
         |> radio_group.done,
-      radio_group.new(Some("fixo"))
+      radio_group.new()
+        |> radio_group.select("fixo")
         |> radio_group.option("fixo", "Radio desabilitado")
         |> radio_group.enabled(False)
         |> radio_group.done,

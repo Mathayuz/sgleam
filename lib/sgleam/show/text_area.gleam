@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Element, type TextAreaRepr}
+import sgleam/show/element.{type Element, type TextAreaRepr}
 
 pub fn new(value: String) -> TextAreaRepr(msg) {
   element.new_text_area(value)

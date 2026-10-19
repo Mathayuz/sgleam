@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Choice, type Element, type PickerRepr}
+import sgleam/show/element.{type Choice, type Element, type PickerRepr}
 
 pub fn choice(label: String, value: String) -> Choice {
   element.new_choice(label, value)

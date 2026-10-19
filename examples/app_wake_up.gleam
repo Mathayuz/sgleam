@@ -2,9 +2,9 @@
 import gleam/int
 import sgleam/task.{type Task}
 import sgleam/task/fake
-import sgleam/ui/app
-import sgleam/ui/element.{type Element}
-import sgleam/ui/text
+import sgleam/show/app
+import sgleam/show/element.{type Element}
+import sgleam/show/text
 
 type Msg {
   Tick

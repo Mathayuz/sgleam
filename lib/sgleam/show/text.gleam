@@ -1,4 +1,4 @@
-import sgleam/ui/element.{type Element, type TextRepr}
+import sgleam/show/element.{type Element, type TextRepr}
 
 pub fn new(content: String) -> TextRepr {
   element.new_text(content)

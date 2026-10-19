@@ -1,10 +1,10 @@
 import gleam/option.{type Option, None, Some}
-import sgleam/ui/button
-import sgleam/ui/element.{type Element}
-import sgleam/ui/layout
-import sgleam/ui/radio_group
-import sgleam/ui/simple_app
-import sgleam/ui/text
+import sgleam/show/button
+import sgleam/show/element.{type Element}
+import sgleam/show/layout
+import sgleam/show/radio_group
+import sgleam/show/simple_app
+import sgleam/show/text
 
 type Model {
   Model(first: Option(String), second: Option(String))
@@ -29,10 +29,18 @@ fn update(model: Model, message: Msg) -> Model {
 }
 
 fn view(model: Model) -> Element(Msg) {
+  let first = case model.first {
+    None -> radio_group.new()
+    Some(value) -> radio_group.new() |> radio_group.select(value)
+  }
+  let second = case model.second {
+    None -> radio_group.new()
+    Some(value) -> radio_group.new() |> radio_group.select(value)
+  }
   layout.column([
     text.new("Primeiro: " <> option.unwrap(model.first, "Nenhum"))
       |> text.done,
-    radio_group.new(model.first)
+    first
       |> radio_group.label("Primeiro tamanho")
       |> radio_group.option("pequeno", "Pequeno")
       |> radio_group.option("medio", "Médio")
@@ -41,7 +49,7 @@ fn view(model: Model) -> Element(Msg) {
       |> radio_group.done,
     text.new("Segundo: " <> option.unwrap(model.second, "Nenhum"))
       |> text.done,
-    radio_group.new(model.second)
+    second
       |> radio_group.label("Segundo tamanho")
       |> radio_group.option("pequeno", "Pequeno")
       |> radio_group.option("medio", "Médio")

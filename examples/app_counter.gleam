@@ -2,11 +2,11 @@
 import gleam/int
 import sgleam/task.{type Task}
 import sgleam/task/fake
-import sgleam/ui/app
-import sgleam/ui/button
-import sgleam/ui/element.{type Element}
-import sgleam/ui/layout
-import sgleam/ui/text
+import sgleam/show/app
+import sgleam/show/button
+import sgleam/show/element.{type Element}
+import sgleam/show/layout
+import sgleam/show/text
 
 type Msg {
   Increment
