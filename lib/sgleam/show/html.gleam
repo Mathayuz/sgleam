@@ -208,7 +208,7 @@ fn render_radio_group(
     indent(level)
       <> "<div role=\"radiogroup\""
       <> option_attr("aria-label", label)
-      <> " style=\"display: flex; flex-direction: column; align-items: flex-start;\">\n"
+      <> " style=\"display: flex; flex-direction: column; align-items: flex-start; gap: 4px;\">\n"
       <> body
       <> "\n"
       <> indent(level)
@@ -339,7 +339,7 @@ fn render_layout(
 
   #(
     indent(level)
-      <> "<div style=\"display: flex; box-sizing: border-box; flex-direction: "
+      <> "<div style=\"display: flex; gap: 4px; box-sizing: border-box; flex-direction: "
       <> direction
       <> case direction {
       "column" -> "; align-items: flex-start"
