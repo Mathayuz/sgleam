@@ -6,56 +6,80 @@ import sgleam/show/radio_group
 import sgleam/show/simple_app
 import sgleam/show/text
 
+type Tamanho {
+  Pequeno
+  Medio
+  Grande
+}
+
 type Model {
-  Model(first: Option(String), second: Option(String))
+  Model(
+    first: Option(Tamanho),
+    second: Option(Tamanho),
+  )
 }
 
 type Msg {
-  First(String)
-  Second(String)
+  First(Tamanho)
+  Second(Tamanho)
   Clear
 }
 
 fn init() -> Model {
-  Model(None, Some("medio"))
+  Model(None, Some(Medio))
 }
 
 fn update(model: Model, message: Msg) -> Model {
   case message {
-    First(value) -> Model(..model, first: Some(value))
-    Second(value) -> Model(..model, second: Some(value))
-    Clear -> Model(None, None)
+    First(value) ->
+      Model(..model, first: Some(value))
+
+    Second(value) ->
+      Model(..model, second: Some(value))
+
+    Clear ->
+      Model(None, None)
   }
 }
 
+fn nome(selecao: Option(Tamanho)) -> String {
+  case selecao {
+    None -> "Nenhum"
+    Some(Pequeno) -> "pequeno"
+    Some(Medio) -> "medio"
+    Some(Grande) -> "grande"
+  }
+}
+
+fn tamanhos(
+  selecao: Option(Tamanho),
+  rotulo: String,
+  mensagem: fn(Tamanho) -> Msg,
+) -> Element(Msg) {
+  let grupo = case selecao {
+    None -> radio_group.new()
+    Some(value) ->
+      radio_group.new()
+      |> radio_group.select(value)
+  }
+
+  grupo
+  |> radio_group.label(rotulo)
+  |> radio_group.option(Pequeno, "Pequeno")
+  |> radio_group.option(Medio, "Médio")
+  |> radio_group.option(Grande, "Grande")
+  |> radio_group.on_select(mensagem)
+  |> radio_group.done
+}
+
 fn view(model: Model) -> Element(Msg) {
-  let first = case model.first {
-    None -> radio_group.new()
-    Some(value) -> radio_group.new() |> radio_group.select(value)
-  }
-  let second = case model.second {
-    None -> radio_group.new()
-    Some(value) -> radio_group.new() |> radio_group.select(value)
-  }
   layout.column([
-    text.new("Primeiro: " <> option.unwrap(model.first, "Nenhum"))
+    text.new("Primeiro: " <> nome(model.first))
       |> text.done,
-    first
-      |> radio_group.label("Primeiro tamanho")
-      |> radio_group.option("pequeno", "Pequeno")
-      |> radio_group.option("medio", "Médio")
-      |> radio_group.option("grande", "Grande")
-      |> radio_group.on_select(First)
-      |> radio_group.done,
-    text.new("Segundo: " <> option.unwrap(model.second, "Nenhum"))
+    tamanhos(model.first, "Primeiro tamanho", First),
+    text.new("Segundo: " <> nome(model.second))
       |> text.done,
-    second
-      |> radio_group.label("Segundo tamanho")
-      |> radio_group.option("pequeno", "Pequeno")
-      |> radio_group.option("medio", "Médio")
-      |> radio_group.option("grande", "Grande")
-      |> radio_group.on_select(Second)
-      |> radio_group.done,
+    tamanhos(model.second, "Segundo tamanho", Second),
     button.new("Limpar seleções")
       |> button.on_press(Clear)
       |> button.done,
@@ -64,5 +88,6 @@ fn view(model: Model) -> Element(Msg) {
 }
 
 pub fn main() {
-  simple_app.create(init, view, update) |> simple_app.run
+  simple_app.create(init, view, update)
+  |> simple_app.run
 }
