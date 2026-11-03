@@ -1,15 +1,17 @@
-// Contador com SimpleApp: init e update retornam o modelo diretamente.
 import gleam/int
+import gleam/string
+import sgleam/check
+import sgleam/show/html
 import sgleam/show/button
 import sgleam/show/element.{type Element}
 import sgleam/show/layout
 import sgleam/show/simple_app
 import sgleam/show/text
 
-type Msg {
-  Increment
-  Decrement
-  Reset
+pub type Msg {
+  Incrementar
+  Decrementar
+  Reiniciar
 }
 
 fn init() -> Int {
@@ -18,19 +20,26 @@ fn init() -> Int {
 
 fn update(model: Int, message: Msg) -> Int {
   case message {
-    Increment -> model + 1
-    Decrement -> model - 1
-    Reset -> 0
+    Incrementar -> model + 1
+    Decrementar -> model - 1
+    Reiniciar -> 0
   }
 }
 
 fn view(model: Int) -> Element(Msg) {
   layout.column([
-    text.new("Contador: " <> int.to_string(model)) |> text.done,
+    text.new("Valor: " <> int.to_string(model))
+      |> text.done,
     layout.row([
-      button.new("-1") |> button.on_press(Decrement) |> button.done,
-      button.new("+1") |> button.on_press(Increment) |> button.done,
-      button.new("Zerar") |> button.on_press(Reset) |> button.done,
+      button.new("+")
+        |> button.on_press(Incrementar)
+        |> button.done,
+      button.new("-")
+        |> button.on_press(Decrementar)
+        |> button.done,
+      button.new("Reiniciar")
+        |> button.on_press(Reiniciar)
+        |> button.done,
     ])
       |> layout.done,
   ])
@@ -38,5 +47,16 @@ fn view(model: Int) -> Element(Msg) {
 }
 
 pub fn main() {
-  simple_app.create(init, view, update) |> simple_app.run
+  simple_app.create(init, view, update)
+  |> simple_app.run
+}
+
+pub fn update_examples() {
+  check.eq(update(4, Incrementar), 5)
+  check.eq(update(4, Decrementar), 3)
+  check.eq(update(4, Reiniciar), 0)
+}
+
+pub fn view_examples() {
+  check.true(string.contains(html.to_html(view(4)), "Valor: 4"))
 }
