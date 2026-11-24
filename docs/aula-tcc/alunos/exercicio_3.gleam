@@ -9,8 +9,9 @@ import sgleam/show/app
 import sgleam/show/button
 import sgleam/task.{type Task}
 
-// TXT servido junto ao playground; a URL é relativa à página do editor.
-const url = "emails-existentes.txt"
+// TXT da internet.
+const url =
+  "https://raw.githubusercontent.com/Mathayuz/sgleam/refs/heads/tcc/docs/aula-tcc/emails-existentes.txt"
 
 type Estado {
   Carregando
