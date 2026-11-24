@@ -1,0 +1,10 @@
+apoio/qa/
+.tools/
+*.aux
+*.log
+*.nav
+*.toc
+*.vrb
+*.snm
+slides.tex
+__pycache__/
